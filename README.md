@@ -102,4 +102,24 @@ Fetches device information from Microsoft Defender for Endpoint and maps IPs to 
 .\Get-DefenderMachinesWithSubnets.ps1 -TenantId "<TenantID>" -ClientId "<ClientID>" -ClientSecret "<Secret>" -OutputCsvPath "C:\Reports\ComputerNamesAndIPsWithSubnets.csv"
 ```
 ---------------------------------------------------------------------------------------------------------
+### Script: New-EntraCustomRole-TAPAssigner.ps1
 
+**Purpose**  
+Creates a custom Entra ID role definition for assigning Temporary Access Pass (TAP).
+
+**Usage**  
+```powershell
+.\New-EntraCustomRole-TAPAssigner.ps1
+```
+--------------------------------------------------------------------------------------------------------
+### Script: Export-DefenderDevicesAndVulnerabilities.ps1
+
+**Purpose**  
+Retrieves device information and vulnerabilities from Microsoft Defender for Endpoint (GCC) via REST API.  
+
+**Usage Examples**  
+- Export **all devices** and vulnerabilities:  
+```powershell
+.\Export-DefenderDevicesAndVulnerabilities.ps1 -TenantId "<TenantID>" -ClientId "<ClientID>" -ClientSecret "<Secret>"
+```
+-------------------------------------------------------------------------------------------------------
