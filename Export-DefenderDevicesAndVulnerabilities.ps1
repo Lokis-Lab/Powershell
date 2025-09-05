@@ -1,130 +1,88 @@
 <#
 .SYNOPSIS
-  Exports Microsoft Defender for Endpoint device and vulnerability data.
+  Exports Defender for Endpoint devices (optionally filtered by OS) and their vulnerabilities.
+  Defaults to Commercial cloud; use -Cloud GCCH for GCC High.
 
 .DESCRIPTION
-  This script authenticates to the Defender for Endpoint API (GCC endpoints),
-  retrieves device inventory (optionally filtered by OS platform), exports devices
-  to CSV, and loops through each device to query vulnerabilities. Results are
-  exported to a separate CSV.
-
-.PARAMETER TenantId
-  Azure AD tenant ID (GUID).
-
-.PARAMETER ClientId
-  Application (client) ID from an app registration with MDE API permissions.
-
-.PARAMETER ClientSecret
-  Client secret generated for the Azure AD app.
-
-.PARAMETER DevicesCsvPath
-  Path to export the device list (default: C:\Reports\Devices.csv).
-
-.PARAMETER VulnerabilitiesCsvPath
-  Path to export vulnerabilities (default: C:\Reports\Vulnerabilities.csv).
-
-.PARAMETER OSPlatform
-  (Optional) OS platform filter, e.g., "Windows11", "Windows10", "Linux".
-  If not provided, all devices are returned.
-
-.EXAMPLE
-  # Export all devices and their vulnerabilities
-  .\Export-DefenderDevicesAndVulnerabilities.ps1 -TenantId "<TenantID>" -ClientId "<ClientID>" -ClientSecret "<Secret>"
-
-.EXAMPLE
-  # Export only Windows 11 devices
-  .\Export-DefenderDevicesAndVulnerabilities.ps1 -TenantId "<TenantID>" -ClientId "<ClientID>" -ClientSecret "<Secret>" -OSPlatform "Windows11"
+  Authenticates with client credentials and queries MDE devices + per-device vulnerabilities.
 #>
 
 param(
   [Parameter(Mandatory=$true)][string]$TenantId,
   [Parameter(Mandatory=$true)][string]$ClientId,
   [Parameter(Mandatory=$true)][string]$ClientSecret,
+  [ValidateSet('Commercial','GCCH')][string]$Cloud = 'Commercial',
   [string]$DevicesCsvPath         = "C:\Reports\Devices.csv",
   [string]$VulnerabilitiesCsvPath = "C:\Reports\Vulnerabilities.csv",
-  [string]$OSPlatform             # Optional filter
+  [string]$OSPlatform             # e.g., Windows11/Windows10/Linux; omit for all
 )
 
-# --- Auth body
+# --- Cloud-specific endpoints/scopes
+if ($Cloud -eq 'Commercial') {
+  $TokenUrl = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token"
+  $ApiBase  = "https://api.securitycenter.microsoft.com"                # Commercial
+  $Scope    = "https://api.securitycenter.microsoft.com/.default"       # Commercial scope
+} else {
+  $TokenUrl = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token"
+  $ApiBase  = "https://api-gcc.securitycenter.microsoft.us"             # GCC High
+  $Scope    = "https://api-gcc.securitycenter.microsoft.us/.default"    # GCC High scope
+  # ^ Switch to GCC via -Cloud GCCH
+}
+
+# --- Auth
 $body = [Ordered]@{
-    client_id     = $ClientId
-    scope         = "https://api-gcc.securitycenter.microsoft.us/.default"
-    client_secret = $ClientSecret
-    grant_type    = "client_credentials"
+  client_id     = $ClientId
+  scope         = $Scope
+  client_secret = $ClientSecret
+  grant_type    = "client_credentials"
+}
+$tokenResponse = Invoke-RestMethod -Method Post -Uri $TokenUrl -ContentType "application/x-www-form-urlencoded" -Body $body
+$token = $tokenResponse.access_token
+$header = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
+
+# --- Endpoints
+$MachinesUrl = "$ApiBase/api/machines"  # <-- switches with cloud
+
+# --- Devices
+$response = Invoke-RestMethod -Method Get -Uri $MachinesUrl -Headers $header -ErrorAction Stop
+$devices  = $response.value
+
+# Optional filter by OS
+if ($OSPlatform) { $devices = $devices | Where-Object { $_.osPlatform -eq $OSPlatform } }
+
+# Filter out temp/decomm names as before
+$devices = $devices | Where-Object { $_.computerDnsName -notmatch '^(minint-|sen-ready|sen-decomm|sacw|senready)' }
+
+if (-not $devices -or $devices.Count -eq 0) {
+  Write-Warning "No devices found with the given criteria."; return
 }
 
-try {
-    # --- Request token
-    $tokenResponse = Invoke-RestMethod -Method Post `
-        -Uri "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token" `
-        -ContentType "application/x-www-form-urlencoded" -Body $body
+# Export device list
+$devices | Select-Object id, computerDnsName, osPlatform, healthStatus, lastSeen |
+  Export-Csv -Path $DevicesCsvPath -NoTypeInformation -Encoding UTF8 -Force
+Write-Host "Devices exported to $DevicesCsvPath" -ForegroundColor Green
 
-    $token = $tokenResponse.access_token
-    if (-not $token) { throw "Failed to acquire token. Please check credentials." }
+# Per-device vulnerabilities
+foreach ($device in $devices) {
+  Start-Sleep -Seconds 1
+  $vulnUrl = "$ApiBase/api/machines/$($device.id)/vulnerabilities"  # <-- switches with cloud
 
-    $header = @{
-        Authorization = "Bearer $token"
-        "Content-Type" = "application/json"
-    }
-
-    # --- Query devices
-    $queryUrl = "https://api-gcc.securitycenter.microsoft.us/api/machines"
-    $response = Invoke-RestMethod -Method Get -Uri $queryUrl -Headers $header -ErrorAction Stop
-    
-    if ($response -and $response.value) {
-        $devices = $response.value
-
-        # --- Optional filter by OS platform
-        if ($OSPlatform) {
-            $devices = $devices | Where-Object { $_.osPlatform -eq $OSPlatform }
+  try {
+    $vulnResp = Invoke-RestMethod -Method Get -Uri $vulnUrl -Headers $header -ErrorAction Stop
+    if ($vulnResp -and $vulnResp.value) {
+      $vulnResp.value | ForEach-Object {
+        [PSCustomObject]@{
+          DeviceId        = $device.id
+          ComputerName    = $device.computerDnsName
+          VulnerabilityId = $_.id
+          Severity        = $_.severity
+          CveId           = if ($_.cveId) { $_.cveId } else { $_.id }
+          Title           = $_.name
         }
-
-        # --- Filter out decommissioned / temp devices by name
-        $devices = $devices | Where-Object { $_.computerDnsName -notmatch '^(minint-|sen-ready|sen-decomm|sacw|senready)' }
-
-        if ($devices.Count -gt 0) {
-            # --- Export devices
-            $deviceData = $devices | Select-Object id, computerDnsName, osPlatform, healthStatus, lastSeen
-            $deviceData | Export-Csv -Path $DevicesCsvPath -NoTypeInformation -Encoding UTF8 -Force
-            Write-Host "Devices exported to $DevicesCsvPath" -ForegroundColor Green
-
-            # --- Loop devices for vulnerabilities
-            foreach ($device in $devices) {
-                Start-Sleep -Seconds 1  # avoid 429 rate limit
-                $deviceId = $device.id
-                $vulnQueryUrl = "https://api-gcc.securitycenter.microsoft.us/api/machines/$deviceId/vulnerabilities"
-                
-                try {
-                    $vulnResponse = Invoke-RestMethod -Method Get -Uri $vulnQueryUrl -Headers $header -ErrorAction Stop
-                    if ($vulnResponse -and $vulnResponse.value) {
-                        $vulnerabilitiesData = $vulnResponse.value | ForEach-Object {
-                            [PSCustomObject]@{
-                                DeviceId        = $deviceId
-                                ComputerName    = $device.computerDnsName
-                                VulnerabilityId = $_.id
-                                Severity        = $_.severity
-                                CveId           = if ($_.cveId) { $_.cveId } else { $_.id }
-                                Title           = $_.name
-                            }
-                        }
-                        $vulnerabilitiesData | Export-Csv -Path $VulnerabilitiesCsvPath -NoTypeInformation -Encoding UTF8 -Append
-                        Write-Host "Vulnerabilities for $($device.computerDnsName) exported." -ForegroundColor Yellow
-                    }
-                } catch {
-                    Write-Warning "Error for device $deviceId: $($_.Exception.Message)"
-                }
-            }
-        } else {
-            Write-Warning "No devices found with the given criteria."
-        }
-    } else {
-        Write-Warning "No device data returned."
+      } | Export-Csv -Path $VulnerabilitiesCsvPath -NoTypeInformation -Encoding UTF8 -Append
+      Write-Host "Vulnerabilities for $($device.computerDnsName) exported." -ForegroundColor Yellow
     }
-}
-catch {
-    if ($_.Exception.Response.StatusCode -eq 429) {
-        Write-Error "Rate limit exceeded. Try again later."
-    } else {
-        Write-Error "An error occurred: $($_.Exception.Message)"
-    }
+  } catch {
+    Write-Warning "Error for $($device.computerDnsName): $($_.Exception.Message)"
+  }
 }
