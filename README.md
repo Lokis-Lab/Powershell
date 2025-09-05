@@ -82,3 +82,24 @@ Sets the "PasswordNeverExpires" attribute to True for all enabled AD user accoun
 .\Set-ADPasswordsNeverExpire.ps1
 ```
 --------------------------------------------------------------------------------------------------
+### Script: Sort-ComputersBySubnet.ps1
+
+**Purpose**  
+Sorts computers by subnet by comparing their IP addresses to a list of subnet definitions.  
+
+**Usage**  
+```powershell
+.\Sort-ComputersBySubnet.ps1 -ComputersFile "C:\Reports\ComputersandIPs.csv" -SubnetsFile "C:\Reports\Subnets.csv" -OutputFile "C:\Reports\SortedComputers.csv"
+```
+-------------------------------------------------------------------------------------------------------------------------------------
+### Script: Get-DefenderMachinesWithSubnets.ps1
+
+**Purpose**  
+Fetches device information from Microsoft Defender for Endpoint and maps IPs to known subnets.
+
+**Usage**  
+```powershell
+.\Get-DefenderMachinesWithSubnets.ps1 -TenantId "<TenantID>" -ClientId "<ClientID>" -ClientSecret "<Secret>" -OutputCsvPath "C:\Reports\ComputerNamesAndIPsWithSubnets.csv"
+```
+---------------------------------------------------------------------------------------------------------
+
