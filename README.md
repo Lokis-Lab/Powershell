@@ -61,4 +61,24 @@ Queries all Active Directory computers and retrieves Microsoft Defender Antiviru
 .\Get-DefenderStatusADComputers.ps1 -OutputCsvPath "C:\Reports\DefenderStatus.csv"
 ```
 ---------------------------------------------------------------------------------------------
+### Script: Invoke-LapsPasswordReset.ps1
 
+**Purpose**  
+Resets LAPS passwords on a list of computers from Active Directory or a CSV file.  
+
+**Usage**  
+- From AD:  
+```powershell
+.\Invoke-LapsPasswordReset.ps1 -Mode AD -OU "DC=flsen,DC=gov" -DomainSuffix "flsen.gov" -OutputCsvPath "C:\Reports\laps_reset_results.csv"
+```
+------------------------------------------------------------------------------------------------
+### Script: Set-ADPasswordsNeverExpire.ps1
+
+**Purpose**  
+Sets the "PasswordNeverExpires" attribute to True for all enabled AD user accounts.
+
+**Usage**  
+```powershell
+.\Set-ADPasswordsNeverExpire.ps1
+```
+--------------------------------------------------------------------------------------------------
