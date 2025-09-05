@@ -123,3 +123,13 @@ Retrieves device information and vulnerabilities from Microsoft Defender for End
 .\Export-DefenderDevicesAndVulnerabilities.ps1 -TenantId "<TenantID>" -ClientId "<ClientID>" -ClientSecret "<Secret>"
 ```
 -------------------------------------------------------------------------------------------------------
+### Script: Build-CVELocalRepository.ps1
+
+**Purpose**  
+Builds a local CVE repository by downloading data from the NVD API and saving it into CSV files (split every 1M records).
+
+**Usage**  
+```powershell
+.\Build-CVELocalRepository.ps1 -ApiKey "<YOUR_API_KEY>" -CsvFolder "C:\Reports\CVERepo"
+```
+----------------------------------------------------------------------------------------------------------
