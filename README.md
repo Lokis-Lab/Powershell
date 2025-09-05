@@ -51,4 +51,14 @@ Connects to Exchange Online and Purview Security & Compliance Center, then delet
 .\Remove-QuarantineMessagesBySender.ps1
 ```
 ----------------------------------------------------------------------------------------
+### Script: Get-DefenderStatusADComputers.ps1
+
+**Purpose**  
+Queries all Active Directory computers and retrieves Microsoft Defender Antivirus status details.
+
+**Usage**  
+```powershell
+.\Get-DefenderStatusADComputers.ps1 -OutputCsvPath "C:\Reports\DefenderStatus.csv"
+```
+---------------------------------------------------------------------------------------------
 
