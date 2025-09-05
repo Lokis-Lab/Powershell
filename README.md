@@ -9,6 +9,8 @@ Exports user creation date, last sign-in, and MFA status for accounts in Azure A
 **Usage**  
 ```powershell
 .\Export-MFAStatusReport.ps1 -InputFile .\UsersWithoutMFA.csv -UserDetailsOut .\UserDetails.csv -MFAReportOut .\MFAStatus.csv
+```
+###################################################################################################################################
 
 ### Script: Get-MFAUserReport-Graph.ps1
 
@@ -18,3 +20,4 @@ Generates a report of Azure AD (Entra ID) users with MFA configuration, licensin
 **Usage**  
 ```powershell
 .\Get-MFAUserReport-Graph.ps1 -OutputCsv "C:\Reports\MFAUsers.csv"
+```
