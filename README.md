@@ -31,3 +31,24 @@ Generates a report of Active Directory users with password expiration details.
 .\Get-ADPasswordExpiryReport.ps1 -OutputCsv "C:\Reports\AD_PasswordExpiryReport.csv"
 ```
 --------------------------------------------------------------------------------
+### Script: Invoke-ComplianceSearchAndPurge.ps1
+
+**Purpose**  
+Runs a compliance search in Exchange Online (Purview) based on subject, sender, and date range, with the option to soft purge results.
+
+**Usage**  
+```powershell
+.\Invoke-ComplianceSearchAndPurge.ps1
+```
+------------------------------------------------------------------------------------
+### Script: Remove-QuarantineMessagesBySender.ps1
+
+**Purpose**  
+Connects to Exchange Online and Purview Security & Compliance Center, then deletes all quarantined messages from a specific sender.
+
+**Usage**  
+```powershell
+.\Remove-QuarantineMessagesBySender.ps1
+```
+----------------------------------------------------------------------------------------
+
