@@ -10,7 +10,7 @@ Exports user creation date, last sign-in, and MFA status for accounts in Azure A
 ```powershell
 .\Export-MFAStatusReport.ps1 -InputFile .\UsersWithoutMFA.csv -UserDetailsOut .\UserDetails.csv -MFAReportOut .\MFAStatus.csv
 ```
-###################################################################################################################################
+-----------------------------------------------------------------------
 
 ### Script: Get-MFAUserReport-Graph.ps1
 
