@@ -9,40 +9,6 @@ A curated set of PowerShell scripts for Microsoft 365, Entra ID (Azure AD), Micr
 
 ---
 
-## 📁 Recommended Folder Structure
-
-```
-/ActiveDirectory
-/Entra-Graph-MFA
-/Defender
-/Exchange-Compliance
-/Networking
-/Registry
-/Vulnerabilities
-/README.md
-```
-
-Organize scripts by the primary tech surface area. If a script spans two areas, place it where you’d look first (and cross‑link in its header).
-
----
-
-## 🔐 Secret Hygiene (scan summary)
-
-This README was generated with a quick heuristic scan over the uploaded ZIP to flag obvious secrets (API keys, client secrets, hardcoded passwords, tokens, private keys).
-
-- **Potential secrets found:** 0
-- **Verdict:** No hard‑coded secrets detected. Several scripts accept parameters like `-ClientSecret` or `-ApiKey`, which is expected. Use **secure input** methods below.
-
-**Secure input patterns**
-- Prefer `Connect-ExchangeOnline` / `Connect-MgGraph` with device code or interactive login
-- For app auth: store secrets in an **Azure Key Vault**, **Windows Credential Manager**, or **Microsoft.PowerShell.SecretManagement**
-- Support env vars where useful: e.g. `$env:NVD_API_KEY`, `$env:GRAPH_CLIENT_ID`, `$env:GRAPH_TENANT_ID`, `$env:GRAPH_CLIENT_SECRET`
-- Avoid committing real tenant IDs, UPNs, or domain names
-
-> If you want, I can add a small `Private/` module to centralize secret retrieval with fallback to parameters/env vars.
-
----
-
 ## 🧰 Prerequisites (per area)
 
 - **Active Directory**: RSAT tools / AD PowerShell module; domain rights as needed
@@ -113,13 +79,11 @@ Connect-ExchangeOnline
 
 All scripts should start with a comment‑based help block including: **SYNOPSIS**, **DESCRIPTION**, **PARAMETERS**, **EXAMPLES**, **REQUIREMENTS**, **WARNINGS**, and **NOTES**. Keep names in **Verb‑Noun** form and prefer **imperative verbs** (`Get`, `Export`, `Invoke`, `Set`, `New`, `Remove`, `Sort`).
 
-If you want, we can add a `scripts/Generate-ReadmeIndex.ps1` to auto‑index scripts by reading their help headers.
-
 ---
 
 ## ☁️ GCC vs Commercial Notes
 
-Where relevant (e.g., Defender endpoints or Graph audiences), include a `-Cloud "Commercial|GCCH"` parameter with sensible defaults. Document any differing endpoints or throttling rules (e.g., NVD API 50 req / 30s).
+Where relevant (e.g., Defender endpoints or Graph audiences), include a `-Cloud "Commercial|GCCH"` parameter with sensible defaults.
 
 ---
 
