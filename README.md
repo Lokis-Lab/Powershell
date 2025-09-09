@@ -153,7 +153,7 @@ Where relevant (e.g., Defender endpoints or Graph audiences), include a `-Cloud 
 
 ## 📄 License
 
-Pick one (e.g., MIT) and commit `LICENSE`. I can add a boilerplate if you want.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
