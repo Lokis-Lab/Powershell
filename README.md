@@ -75,6 +75,7 @@ Connect-ExchangeOnline
 - **Get-ADPasswordExpiryReport.ps1** — Report AD users close to password expiry (requires RSAT/AD module).
 - **Set-ADPasswordsNeverExpire.ps1** — Set PasswordNeverExpires for a list of AD users (danger, read warnings).
 - **Invoke-LapsPasswordReset.ps1** — Reset LAPS password for a computer or OU (writes to secure log).
+- **Invoke-AADConnectSync.ps1** - Remotely triggers an Azure AD Connect sync cycle (Delta or Initial)
 
 ### `Entra-Graph-MFA/`
 
