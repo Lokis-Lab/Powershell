@@ -45,32 +45,32 @@ Connect-ExchangeOnline
 
 ### `Entra-Graph-MFA/`
 
-- **Export-MFAStatusReport.ps1** — Export user created date, last sign-in, and MFA status using Microsoft Graph.
-- **Get-MFAUserReport-Graph.ps1** — Enumerate user MFA methods/status via Graph SDK (no hard-coded creds).
-- **New-EntraCustomRole-TAPAssigner.ps1** — Create a least-privilege custom role for assigning Temporary Access Pass.
+- **[Export-MFAStatusReport.ps1](Entra-Graph-MFA/Export-MFAStatusReport.ps1)** — Export user created date, last sign-in, and MFA status using Microsoft Graph.
+- **[Get-MFAUserReport-Graph.ps1](Entra-Graph-MFA/Get-MFAUserReport-Graph.ps1)** — Enumerate user MFA methods/status via Graph SDK (no hard-coded creds).
+- **[New-EntraCustomRole-TAPAssigner.ps1](Entra-Graph-MFA/New-EntraCustomRole-TAPAssigner.ps1)** — Create a least-privilege custom role for assigning Temporary Access Pass.
 
 ### `Defender/`
 
-- **Export-DefenderDevicesAndVulnerabilities.ps1** — Export Defender device inventory and vulnerability list via Graph/Sec API.
-- **Get-DefenderMachinesWithSubnets.ps1** — Join Defender devices to subnets for network-aware reporting.
-- **Get-DefenderStatusADComputers.ps1** — Correlate AD computers with Defender status (healthy/at risk).
+- **[Export-DefenderDevicesAndVulnerabilities.ps1](Defender/Export-DefenderDevicesAndVulnerabilities.ps1)** — Export Defender device inventory and vulnerability list via Graph/Sec API.
+- **[Get-DefenderMachinesWithSubnets.ps1](Defender/Get-DefenderMachinesWithSubnets.ps1)** — Join Defender devices to subnets for network-aware reporting.
+- **[Get-DefenderStatusADComputers.ps1](Defender/Get-DefenderStatusADComputers.ps1)** — Correlate AD computers with Defender status (healthy/at risk).
 
 ### `Exchange-Compliance/`
 
-- **Invoke-ComplianceSearchAndPurge.ps1** — Run Content Search + Purge in Microsoft 365 (eDiscovery/Compliance).
-- **Remove-QuarantineMessagesBySender.ps1** — Bulk-release or remove quarantined messages by sender in EXO.
+- **[Invoke-ComplianceSearchAndPurge.ps1](Exchange-Compliance/Invoke-ComplianceSearchAndPurge.ps1)** — Run Content Search + Purge in Microsoft 365 (eDiscovery/Compliance).
+- **[Remove-QuarantineMessagesBySender.ps1](Exchange-Compliance/Remove-QuarantineMessagesBySender.ps1)** — Bulk-release or remove quarantined messages by sender in EXO.
 
 ### `Networking/`
 
-- **Sort-ComputersBySubnet.ps1** — Sort computer list into subnets using CIDR ranges.
+- **[Sort-ComputersBySubnet.ps1](Networking/Sort-ComputersBySubnet.ps1)** — Sort computer list into subnets using CIDR ranges.
 
 ### `Registry/`
 
-- **Script to Check-RemoteRegistryValue.ps1** — Query a remote registry value (no WinRM required).
+- **[Check-RemoteRegistryValue.ps1](Registry/Check-RemoteRegistryValue.ps1)** — Query a remote registry value (no WinRM required).
 
 ### `Vulnerabilities/`
 
-- **Build-CVELocalRepository.ps1** — Download CVEs from NVD API into rolling CSVs (handles rate limits).
+- **[Build-CVELocalRepository.ps1](Vulnerabilities/Build-CVELocalRepository.ps1)** — Download CVEs from NVD API into rolling CSVs (handles rate limits).
 
 
 ---
