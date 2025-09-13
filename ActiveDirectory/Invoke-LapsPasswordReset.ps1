@@ -20,7 +20,7 @@
   Path to input CSV containing a column "ComputerName" (required if Mode is "CSV").
 
 .PARAMETER DomainSuffix
-  Domain suffix to append to computer names (e.g., "flsen.gov" or "ext.flsen.gov").
+  Domain suffix to append to computer names (e.g. mydomain.com)
 
 .PARAMETER OutputCsvPath
   Path where results will be saved.
