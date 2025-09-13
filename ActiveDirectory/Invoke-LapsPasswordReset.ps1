@@ -15,21 +15,24 @@
 
 .PARAMETER OU
   DistinguishedName of the top-level OU to search (required if Mode is "AD").
+  Example: "DC=contoso,DC=com"
 
 .PARAMETER InputCsvPath
   Path to input CSV containing a column "ComputerName" (required if Mode is "CSV").
+  Example: "C:\Reports\Servers.csv"
 
 .PARAMETER DomainSuffix
-  Domain suffix to append to computer names (e.g. mydomain.com)
+  Domain suffix to append to computer names.
+  Example: "contoso.com" or "ext.contoso.com"
 
 .PARAMETER OutputCsvPath
   Path where results will be saved.
 
 .EXAMPLE
-  .\Invoke-LapsPasswordReset.ps1 -Mode AD -OU "DC=flsen,DC=gov" -DomainSuffix "flsen.gov" -OutputCsvPath "C:\Reports\laps_reset_results.csv"
+  .\Invoke-LapsPasswordReset.ps1 -Mode AD -OU "DC=contoso,DC=com" -DomainSuffix "contoso.com" -OutputCsvPath "C:\Reports\laps_reset_results.csv"
 
 .EXAMPLE
-  .\Invoke-LapsPasswordReset.ps1 -Mode CSV -InputCsvPath "C:\Reports\EXTservers.csv" -DomainSuffix "ext.flsen.gov" -OutputCsvPath "C:\Reports\EXTlaps_reset_results.csv"
+  .\Invoke-LapsPasswordReset.ps1 -Mode CSV -InputCsvPath "C:\Reports\ExternalServers.csv" -DomainSuffix "ext.contoso.com" -OutputCsvPath "C:\Reports\ext_laps_reset_results.csv"
 
 .NOTES
   Requirements:
@@ -46,13 +49,13 @@ param(
 
   [string]$OU,                  # Required if Mode = AD
   [string]$InputCsvPath,        # Required if Mode = CSV
-  [string]$DomainSuffix,        # e.g., "flsen.gov" or "ext.flsen.gov"
+  [string]$DomainSuffix,        # Example: "contoso.com" or "ext.contoso.com"
   [string]$OutputCsvPath = "C:\Reports\LAPS_Reset_Results.csv"
 )
 
 # --- Import AD module if needed
 if ($Mode -eq "AD") {
-    Import-Module ActiveDirectory
+    Import-Module ActiveDirectory -ErrorAction Stop
 }
 
 # --- Get list of computers
