@@ -121,7 +121,3 @@ Where relevant (e.g., Defender endpoints or Graph audiences), include a `-Cloud 
 MIT License — see [LICENSE](LICENSE) for details.
 
 ---
-
-## 🙋 Support
-
-Open an issue or PR with bug reports, enhancements, or docs fixes. Include PowerShell version, cloud (Commercial/GCC), and module versions.
