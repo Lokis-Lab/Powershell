@@ -54,6 +54,7 @@ Connect-ExchangeOnline
 - **[Export-DefenderDevicesAndVulnerabilities.ps1](Defender/Export-DefenderDevicesAndVulnerabilities.ps1)** — Export Defender device inventory and vulnerability list via Graph/Sec API.
 - **[Get-DefenderMachinesWithSubnets.ps1](Defender/Get-DefenderMachinesWithSubnets.ps1)** — Join Defender devices to subnets for network-aware reporting.
 - **[Get-DefenderStatusADComputers.ps1](Defender/Get-DefenderStatusADComputers.ps1)** — Correlate AD computers with Defender status (healthy/at risk).
+- **[DefenderInternalUsersSummary.ps1](Defender/DefenderInternalUsersSummary.ps1)** - Uses Microsoft Defender Advanced Hunting API to generate an HTML "Internal Users Summary" report for a given calendar day
 
 ### `Exchange-Compliance/`
 
