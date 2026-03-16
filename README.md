@@ -89,26 +89,6 @@ Where relevant (e.g., Defender endpoints or Graph audiences), include a `-Cloud 
 
 ---
 
-## 📦 Suggested Future Structure
-
-```
-/ActiveDirectory
-/Defender
-/Entra-Graph-MFA
-/Exchange-Compliance
-/Networking
-/Registry
-/Vulnerabilities
-/Modules
-  /Private   # secret helpers, input validation, logging
-  /Public    # functions shared by multiple scripts
-/tests       # Pester tests for critical logic
-/.github
-  /workflows # CI: PSScriptAnalyzer, Pester, markdown lint
-```
-
----
-
 ## 🧪 Quality Gates
 
 - **PSScriptAnalyzer**: style & safety checks
