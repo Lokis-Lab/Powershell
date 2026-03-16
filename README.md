@@ -42,6 +42,7 @@ Connect-ExchangeOnline
 - **[Set-ADPasswordsNeverExpire.ps1](ActiveDirectory/Set-ADPasswordsNeverExpire.ps1)** — Set PasswordNeverExpires for a list of AD users (danger, read warnings).
 - **[Invoke-LapsPasswordReset.ps1](ActiveDirectory/Invoke-LapsPasswordReset.ps1)** — Reset LAPS password for a computer or OU (writes to secure log).
 - **[Invoke-AADConnectSync.ps1](ActiveDirectory/Invoke-AADConnectSync.ps1)** - Remotely triggers an Azure AD Connect sync cycle (Delta or Initial)
+- **[GPO-Audit-Master.ps1](ActiveDirectory/GPO-Audit-Master.ps1)** — Export, flatten, and compare GPOs (XML exports, CSV flattens, and registry snapshot/compare helpers).
 
 ### `Entra-Graph-MFA/`
 
