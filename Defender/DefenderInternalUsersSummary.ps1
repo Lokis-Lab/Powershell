@@ -8,19 +8,27 @@
 
   This version is sanitized for public use. Look for "CONFIG:" comments below
   where you must plug in your own tenant/app/internal-domain details.
+  
+  Authentication values are intended to be provided from a secure pipeline
+  variable group (for example, Azure DevOps Library variable groups), not
+  hardcoded in this script.
+
+  If you publish report output to SharePoint, keep site/library/folder values in
+  that same secured variable group and reference them from your pipeline/task.
 
 .OUTPUTS
   - Timestamped HTML report suitable for publishing or upload.
 
 .NOTES
-  - GCC example endpoints are used here. For commercial tenants, update the
-    token and API base URLs as indicated in the CONFIG section.
+  - Endpoint values are examples only. Set token/API URLs for your tenant cloud
+    (Commercial, GCC, GCC High, etc.) in the CONFIG section.
   - Time window is a calendar day (00:00–23:59) in your local time.
 
 CONFIG CHECKLIST (search for 'CONFIG:' below):
-  1. CONFIG: Tenant/app registration environment variables (TENANT_ID / CLIENT_ID / CLIENT_SECRET)
+  1. CONFIG: Tenant/app registration environment variables
   2. CONFIG: Internal SMTP domains list ($InternalDomains)
-  3. CONFIG: Cloud endpoints (GCC vs Commercial)
+  3. CONFIG: Cloud endpoints for your tenant environment
+  4. CONFIG: (Optional) SharePoint target values stored in a secured variable group
 #>
 
 [CmdletBinding()]
@@ -44,6 +52,11 @@ param(
 #   - AdvancedQuery.Read.All / ThreatHunting.Read.All (or equivalent in your environment)
 # and that you expose its IDs/secrets as environment variables.
 #
+# Recommended pipeline pattern:
+#   - Store TENANT_ID / CLIENT_ID / CLIENT_SECRET in a secured Library variable group.
+#   - Link that variable group to the pipeline that runs this script.
+#   - Let the pipeline map them to process environment variables consumed below.
+#
 #   $env:TENANT_ID     = "<your-tenant-guid>"
 #   $env:CLIENT_ID     = "<your-app-client-id>"
 #   $env:CLIENT_SECRET = "<your-client-secret>"
@@ -58,12 +71,12 @@ if (-not $TenantId -or -not $ClientId -or -not $ClientSecret) {
 
 # CONFIG: Internal SMTP domains
 # -----------------------------
-# Replace these examples with your actual internal email domains.
+# Replace these placeholders with your actual internal email domains.
 # Example:
-#   @("contoso.com","fabrikam.com")
+#   @("example.com","subsidiary.example")
 $InternalDomains = @(
-    "contoso.com",   # TODO: replace with your primary internal SMTP domain
-    "fabrikam.com"   # TODO: replace or remove as needed
+    "example.com",             # TODO: replace with your primary internal SMTP domain
+    "subsidiary.example"       # TODO: replace/remove as needed
 )
 $InternalDomainsDyn = ($InternalDomains | ForEach-Object { '"' + $_ + '"' }) -join ","
 
@@ -78,15 +91,24 @@ $OutputFile = Join-Path $OutDir "UserEmailSummary_$TimeStamp.html"
 
 # CONFIG: Cloud endpoints (GCC vs Commercial)
 # -------------------------------------------
-# GCC example (as previously used):
+# Example values (update for your tenant cloud):
 $TokenEndpoint = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token"
 $ApiBase       = "https://api-gcc.security.microsoft.us"
 $MdeScope      = "https://api-gcc.security.microsoft.us/.default"
 #
-# For Commercial tenants, you would typically use:
+# Example for Commercial tenants:
 #   $ApiBase  = "https://api.security.microsoft.com"
 #   $MdeScope = "https://api.security.microsoft.com/.default"
-# (Update both values if you are not on GCC.)
+# (Always ensure both values match your cloud environment.)
+
+# CONFIG: Optional SharePoint publish target metadata
+# ---------------------------------------------------
+# If a downstream pipeline step uploads this report to SharePoint, keep these
+# values in the same secured variable group used for auth secrets, for example:
+#   SHAREPOINT_SITE_URL      = "https://<tenant>.sharepoint.com/sites/<site>"
+#   SHAREPOINT_LIBRARY_NAME  = "<document-library-name>"
+#   SHAREPOINT_FOLDER_PATH   = "<optional/subfolder/path>"
+# This script does not upload directly; these are documented for pipeline usage.
 
 # ==========================================================
 # AUTHENTICATION (MDE – client credentials)
