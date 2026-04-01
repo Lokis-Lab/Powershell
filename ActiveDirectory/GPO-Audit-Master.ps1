@@ -1,129 +1,49 @@
 <#
 .SYNOPSIS
-  Unified GPO audit, export, flatten, snapshot, and comparison tool for Group Policy analysis.
+  Master GPO audit script: export XML for selected GPOs, flatten XML to CSV,
+  take/compare registry key+value snapshots, and search all GPOs for settings
+  by partial text – all in one place.
 
 .DESCRIPTION
-  This script provides a single entry point for working with Group Policy Objects (GPOs)
-  in several different ways. It can export selected GPOs to XML, flatten GPO settings
-  into comparison-friendly CSV files, capture registry-based GPO snapshots, compare
-  snapshots over time, and compare two individual GPOs side by side.
-
-  The script is designed to help with GPO auditing, baseline creation, drift detection,
-  and structured comparison work. It supports both command-line execution and an
-  interactive Windows Forms GUI when -Mode is not supplied.
-
-  Core capabilities include:
-
-    - Export GPO reports to XML for one, many, or all matching GPOs
-    - Flatten exported XML into normalized CSV output for easier filtering,
-      searching, and comparison
-    - Build a master flattened CSV covering all processed GPOs
-    - Build a per-GPO counts summary showing how many settings were extracted
-      from major policy areas
-    - Capture registry-style snapshots of GPO-backed settings for baseline tracking
-    - Compare two registry snapshots to identify added, removed, changed, and
-      unchanged settings
-    - Compare two master flatten CSVs to identify differences between baseline
-      and current GPO output
-    - Export, flatten, and compare two individual GPOs side by side
-    - Filter target GPOs by display name list, display name regex, or GPO GUID
-
-  Flattened output is intended to make GPO data easier to review than raw XML by
-  standardizing each discovered setting into rows with fields such as GPO, scope,
-  extension, category, setting, type, and value.
-
-  Registry snapshot output is intended for baseline and drift analysis, especially
-  when you want to compare registry-backed GPO settings between two points in time.
-
-  By default, when no -Mode parameter is supplied, the script launches a GUI that
-  exposes these actions:
-
-    1. Export GPO XML only
-    2. Flatten existing XML to CSV
-    3. Export GPO XML and then flatten
-    4. Registry key+value snapshot
-    5. Compare two registry snapshots
-    6. Export + flatten + compare to previous
-    7. Export + flatten two GPOs and compare
-
-  This script combines and extends the logic from earlier standalone scripts such as:
-
+  This combines the logic from:
     - All GPO export.ps1
     - Flatten GPOs into CSV file.ps1
     - GPO Snapshot - Registry KeyValue.ps1
 
-.NOTES
-  Requirements:
-    - Windows PowerShell or PowerShell 7+
-    - GroupPolicy module
-    - RSAT: Group Policy Management tools installed
-    - Access to read GPOs in the target domain
-
-  Output structure commonly includes:
-    - OutDir\Exports
-    - OutDir\Flattened
-    - OutDir\MasterFlatten_AllGPOs.csv
-    - OutDir\MasterCounts_ByGPO.csv
-
-  Registry snapshot mode commonly writes:
-    - SnapshotMeta.clixml
-    - GpoRegistrySnapshot.clixml
-    - GpoRegistrySnapshot.csv
-
-  Compare modes commonly write:
-    - Compare-RegistryKeyValue.csv
-    - Compare-MasterFlatten.csv
-    - Diff_ByGPO_<timestamp>.csv
+  Instead of always exporting ALL GPOs, you can filter the GPOs to process by:
+    - Display name list
+    - Display name regex
+    - GPO GUID list
 
 .EXAMPLES
   # 1) Export XML only for a few GPOs
-  #    EDIT: replace Example* with your real GPO display names.
-  .\GPO Audit Master.ps1 -Mode XmlExport -OutDir C:\Temp\GPO_Audit `
-    -IncludeGpoName "Example - Workstations","Example - Servers"
+  .\GPO-Audit-Master.ps1 -Mode XmlExport -OutDir C:\Temp\GPO_Audit `
+    -IncludeGpoName "SEC - Workstations","SEC - Servers"
 
   # 2) Export XML for matching GPOs and flatten them to CSVs in one go
-  #    EDIT: adjust the regex to match your own GPO naming convention.
-  .\GPO Audit Master.ps1 -Mode XmlExportAndFlatten -OutDir C:\Temp\GPO_Audit `
-    -IncludeGpoNameRegex "^Example - "
+  .\GPO-Audit-Master.ps1 -Mode XmlExportAndFlatten -OutDir C:\Temp\GPO_Audit `
+    -IncludeGpoNameRegex "^(CIS|STIG) - "
 
   # 3) Just flatten existing XMLs in OutDir\Exports
-  .\GPO Audit Master.ps1 -Mode FlattenXml -OutDir C:\Temp\GPO_Audit
+  .\GPO-Audit-Master.ps1 -Mode FlattenXml -OutDir C:\Temp\GPO_Audit
 
   # 4) Take a registry key+value snapshot for a subset of GPOs
-  #    EDIT: replace Example* with your real GPO display names and snapshot folder.
-  .\GPO Audit Master.ps1 -Mode RegistrySnapshotExport `
+  .\GPO-Audit-Master.ps1 -Mode RegistrySnapshotExport `
     -OutDir C:\Temp\GpoSnap\Baseline `
-    -IncludeGpoName "Example - Workstations","Example - Servers"
+    -IncludeGpoName "SEC - Workstations","SEC - Servers"
 
   # 5) Compare two registry snapshots previously taken by this script
-  .\GPO Audit Master.ps1 -Mode RegistrySnapshotCompare `
+  .\GPO-Audit-Master.ps1 -Mode RegistrySnapshotCompare `
     -LeftFolder  C:\Temp\GpoSnap\Baseline `
     -RightFolder C:\Temp\GpoSnap\Current `
     -OutFolderCompare C:\Temp\GpoSnap\Diff
 
-  # 6) Full audit workflow: export GPO XML, flatten settings, and compare
-    the new results to a previous baseline of flattened GPO data.
-  .\GPO Audit Master.ps1 -Mode XmlExportAndFlatten `
-    -OutDir C:\Temp\GPO_Audit_Current
+  # 6) Find settings whose name, value, or path text contains a phrase (e.g. "turn off") across all GPOs
+  .\GPO-Audit-Master.ps1 -Mode SearchSettings -SearchText "turn off"
+  .\GPO-Audit-Master.ps1 -Mode SearchSettings -SearchText "active hours" -SearchCsvOut C:\Temp\GpoSearch.csv
 
-    Then compare the two flattened outputs:
-   (baseline vs new run)
-  Invoke-FlattenCompare `
-    -LeftPath  C:\Temp\GPO_Audit_Baseline\MasterFlatten_AllGPOs.csv `
-    -RightPath C:\Temp\GPO_Audit_Current\MasterFlatten_AllGPOs.csv `
-    -OutFolder C:\Temp\GPO_Audit_Diff
-
-  # 7) Compare two specific GPOs by exporting, flattening, and diffing them
-     (this workflow is normally launched from the GUI option).
-  .\GPO Audit Master.ps1
-
-      Then select:
-        "Export + flatten two GPOs and compare"
-  
-      The script will:
-        - Export both GPOs to XML
-        - Flatten their settings
-        - Generate a CSV diff report showing Added, Removed, and Changed settings
+  # 7) Same, but only GPOs linked under OUs matching "IT" or "Sales" (substring on OU name or canonical path), including child OUs
+  .\GPO-Audit-Master.ps1 -Mode SearchSettings -SearchText "turn off" -SearchOuNameFilter "IT","Sales" -SearchOuIncludeChildren
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Xml')]
@@ -131,31 +51,48 @@ param(
   # What this run should do
   # When not supplied, an interactive menu will prompt for it.
   [Parameter()]
-  [ValidateSet('XmlExport','FlattenXml','XmlExportAndFlatten','RegistrySnapshotExport','RegistrySnapshotCompare')]
+  [ValidateSet('XmlExport','FlattenXml','XmlExportAndFlatten','RegistrySnapshotExport','RegistrySnapshotCompare','SearchSettings')]
   [string]$Mode,
 
   # Shared: root folder
   [Parameter(ParameterSetName='Xml')]
   [Parameter(ParameterSetName='SnapshotExport')]
-  # EDIT: change the default to your preferred base output folder.
   [string]$OutDir = "C:\Temp\GPO_Audit",
 
   # XML export options
   [Parameter(ParameterSetName='Xml')]
+  [Parameter(ParameterSetName='Search')]
   [int]$Throttle = 6,
 
-  # GPO filters (used by XmlExport*, RegistrySnapshotExport)
+  # GPO filters (used by XmlExport*, RegistrySnapshotExport, SearchSettings)
   [Parameter(ParameterSetName='Xml')]
   [Parameter(ParameterSetName='SnapshotExport')]
+  [Parameter(ParameterSetName='Search')]
   [string[]]$IncludeGpoName,
 
   [Parameter(ParameterSetName='Xml')]
   [Parameter(ParameterSetName='SnapshotExport')]
+  [Parameter(ParameterSetName='Search')]
   [string]$IncludeGpoNameRegex,
 
   [Parameter(ParameterSetName='Xml')]
   [Parameter(ParameterSetName='SnapshotExport')]
+  [Parameter(ParameterSetName='Search')]
   [string[]]$IncludeGpoId,
+
+  # SearchSettings: case-insensitive substring match across flattened setting name, value, category, extension, scope
+  [Parameter(ParameterSetName='Search', Mandatory)]
+  [string]$SearchText,
+
+  [Parameter(ParameterSetName='Search')]
+  [string]$SearchCsvOut,
+
+  # SearchSettings: limit to GPOs linked under OUs whose name or canonical path contains any of these substrings (comma-separated in GUI). Requires ActiveDirectory module.
+  [Parameter(ParameterSetName='Search')]
+  [string[]]$SearchOuNameFilter,
+
+  [Parameter(ParameterSetName='Search')]
+  [switch]$SearchOuIncludeChildren,
 
   # Registry snapshot compare
   [Parameter(ParameterSetName='SnapshotCompare', Mandatory)]
@@ -170,8 +107,77 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Write-FatalError {
+  param([Parameter(Mandatory)][string]$Message)
+  Write-Host $Message -ForegroundColor Red
+  try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+    [System.Windows.Forms.MessageBox]::Show($Message, 'GPO Audit Master', 'OK', 'Error')
+  } catch {
+    try { Read-Host 'Press Enter to exit' } catch { }
+  }
+  exit 1
+}
+
+trap {
+  $msg = if ($_.Exception.Message) { $_.Exception.Message } else { $_ | Out-String }
+  Write-FatalError $msg
+}
+
 try { Import-Module GroupPolicy -ErrorAction Stop } catch {
-  throw "The 'GroupPolicy' module is required (RSAT: Group Policy Management). $_"
+  Write-FatalError "The GroupPolicy module is required (install RSAT: Group Policy Management).`r`n`r`n$($_.Exception.Message)"
+}
+
+function Get-ActiveDirectoryRsatInstallHint {
+  $capHint = ''
+  try {
+    if (Get-Command Get-WindowsCapability -ErrorAction SilentlyContinue) {
+      $cap = Get-WindowsCapability -Online -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'Rsat.ActiveDirectory.DS-LDS.Tools*' } |
+        Select-Object -First 1
+      if ($cap -and $cap.State -ne 'Installed') {
+        $capHint = "`r`n`r`nOptional feature status: $($cap.Name) = $($cap.State). Install it, then restart PowerShell."
+      }
+    }
+  } catch { }
+  @"
+The Active Directory PowerShell module (RSAT) is not available on this computer.
+
+Install on Windows 10/11 (client):
+  Settings > Apps > Optional features > Add an optional feature (or View features)
+  Search for: Active Directory Domain Services and Lightweight Directory Services Tools
+  Or run in an elevated PowerShell:
+  Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0
+
+Install on Windows Server:
+  Server Manager > Add Roles and Features > Features > Remote Server Administration Tools >
+  Role Administration Tools > AD DS and AD LDS Tools > AD DS Tools
+
+After installing, close all PowerShell windows and try again.
+$capHint
+"@
+}
+
+function Test-ActiveDirectoryModuleAvailable {
+  [CmdletBinding()]
+  param()
+  if (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue) { return $true }
+  $m = Get-Module -ListAvailable -Name ActiveDirectory -ErrorAction SilentlyContinue
+  return ($null -ne $m -and @($m).Count -gt 0)
+}
+
+function Import-ActiveDirectoryModule {
+  [CmdletBinding()]
+  param()
+  if (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue) { return }
+  if (-not (Test-ActiveDirectoryModuleAvailable)) {
+    throw (Get-ActiveDirectoryRsatInstallHint)
+  }
+  try {
+    Import-Module ActiveDirectory -ErrorAction Stop
+  } catch {
+    throw "$(Get-ActiveDirectoryRsatInstallHint)`r`n`r`nImport-Module failed: $($_.Exception.Message)"
+  }
 }
 
 function Ensure-Folder {
@@ -476,6 +482,541 @@ function Get-AllFlattenedRows {
   Add-FlattenRows -Target $rows -Items (Get-WlanPolicyRows            -Xml $Xml -Gpo $Gpo)
 
   return $rows
+}
+
+function Get-AdFriendlyOuPathLabel {
+  <#
+  .SYNOPSIS
+    Safe display label for domain/OU objects: never calls string methods on null.
+    Handles canonicalName as string, collection, or missing.
+  #>
+  param(
+    $AdObject,
+    [string]$Fallback = ''
+  )
+  if ($null -eq $AdObject) { return $Fallback }
+  try {
+    $c = $AdObject.canonicalName
+    if ($null -ne $c) {
+      $s = $null
+      if ($c -is [string]) {
+        $s = $c
+      } elseif ($c -is [System.Collections.IEnumerable] -and $c -isnot [string]) {
+        $first = @($c)[0]
+        if ($null -ne $first) {
+          try { $s = $first.ToString() } catch { $s = $null }
+        }
+      } else {
+        try { $s = $c.ToString() } catch { $s = $null }
+      }
+      if (-not [string]::IsNullOrWhiteSpace($s)) {
+        return ([string]$s).TrimEnd('/')
+      }
+    }
+    $nm = $AdObject.Name
+    if ($null -ne $nm) {
+      $ns = $null
+      try { $ns = $nm.ToString() } catch { $ns = $null }
+      if ($null -ne $ns) {
+        $ns = $ns.Trim()
+        if ($ns.Length -gt 0) { return $ns }
+      }
+    }
+    $dn = $AdObject.DistinguishedName
+    if ($null -ne $dn) {
+      $ds = $null
+      try { $ds = $dn.ToString() } catch { $ds = $null }
+      if (-not [string]::IsNullOrWhiteSpace($ds)) { return $ds }
+    }
+  } catch {
+    return $Fallback
+  }
+  return $Fallback
+}
+
+function Get-SafeAdOuSortKey {
+  param($Ou)
+  if ($null -eq $Ou) { return '' }
+  try {
+    $d = $Ou.DistinguishedName
+    if ($null -eq $d) { return '' }
+    return [string]$d
+  } catch {
+    return ''
+  }
+}
+
+function Get-AdDnString {
+  <#
+  .SYNOPSIS
+    Normalized distinguishedName string for hashtable keys (AD sometimes returns ADPropertyValueCollection).
+    Strings implement IEnumerable — must test [string] before IEnumerable or only the first character is used.
+  #>
+  param($ObjectWithDn)
+  if ($null -eq $ObjectWithDn) { return '' }
+  $d = $null
+  try { $d = $ObjectWithDn.DistinguishedName } catch { return '' }
+  if ($null -eq $d) { return '' }
+  if ($d -is [string]) { return $d.Trim() }
+  if ($d -is [char[]]) { return ([string]::new($d)).Trim() }
+  if ($d -is [System.Collections.IEnumerable]) {
+    $first = $null
+    foreach ($x in $d) { $first = $x; break }
+    if ($null -eq $first) { return '' }
+    return ([string]$first).Trim()
+  }
+  return ([string]$d).Trim()
+}
+
+function Get-AdOuLeafDisplayName {
+  <#
+  .SYNOPSIS
+    Short OU label: leaf name only (AD Name / last segment of canonical), not the full path.
+    Domain NC uses DNS root (e.g. contoso.com).
+  #>
+  param(
+    $AdObject,
+    [Parameter(Mandatory)][string]$DomainDistinguishedName,
+    [Parameter(Mandatory)][string]$DnsRootFallback
+  )
+  if ($null -eq $AdObject) { return '' }
+  $dnStr = Get-AdDnString -ObjectWithDn $AdObject
+  if ([string]::IsNullOrWhiteSpace($dnStr)) { return '' }
+  if ([string]::Equals($dnStr.Trim(), $DomainDistinguishedName.Trim(), [StringComparison]::OrdinalIgnoreCase)) {
+    $t = $DnsRootFallback.Trim()
+    if (-not [string]::IsNullOrWhiteSpace($t)) { return $t }
+    return 'Domain'
+  }
+  $name = $AdObject.Name
+  if (-not [string]::IsNullOrWhiteSpace($name)) {
+    return $name.Trim()
+  }
+  $c = $AdObject.canonicalName
+  if ($null -ne $c) {
+    $cs = $c.ToString().TrimEnd('/')
+    $parts = $cs -split '/', [System.StringSplitOptions]::RemoveEmptyEntries
+    if ($parts.Length -gt 0) {
+      return $parts[$parts.Length - 1].Trim()
+    }
+  }
+  if ($dnStr -match '(?i)OU=([^,]+)') {
+    return $Matches[1].Trim()
+  }
+  return $dnStr
+}
+
+function Get-AdOuParentFolderName {
+  param($Ou)
+  if ($null -eq $Ou) { return '' }
+  $c = $Ou.canonicalName
+  if ($null -eq $c) { return '' }
+  $cs = $c.ToString().TrimEnd('/')
+  $parts = $cs -split '/', [System.StringSplitOptions]::RemoveEmptyEntries
+  if ($parts.Length -lt 2) { return '' }
+  return $parts[$parts.Length - 2].Trim()
+}
+
+function Get-AdOuDisambiguatedDisplayMapFromOuList {
+  <#
+  .SYNOPSIS
+    Maps each OU distinguishedName to a short display string; duplicate leaf names get "Leaf (ParentFolder)".
+  #>
+  param(
+    [object[]]$OuList,
+    [Parameter(Mandatory)][string]$DomainDistinguishedName,
+    [Parameter(Mandatory)][string]$DnsRootFallback
+  )
+  $domainKey = $DomainDistinguishedName.Trim()
+  $map = [System.Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
+  $rootLabel = $DnsRootFallback.Trim()
+  if ([string]::IsNullOrWhiteSpace($rootLabel)) { $rootLabel = 'Domain' }
+  $map[$domainKey] = $rootLabel
+
+  $sorted = @($OuList | Where-Object { $null -ne $_ } | Sort-Object { Get-SafeAdOuSortKey $_ })
+  $groups = @{}
+  foreach ($ou in $sorted) {
+    $leaf = Get-AdOuLeafDisplayName -AdObject $ou -DomainDistinguishedName $domainKey -DnsRootFallback $DnsRootFallback
+    if ([string]::IsNullOrWhiteSpace($leaf)) { continue }
+    $gkey = $leaf.ToLowerInvariant()
+    if (-not $groups.ContainsKey($gkey)) {
+      $groups[$gkey] = [System.Collections.Generic.List[object]]::new()
+    }
+    $groups[$gkey].Add($ou)
+  }
+  foreach ($key in $groups.Keys) {
+    $grp = $groups[$key]
+    foreach ($ou in $grp) {
+      $dnKey = Get-AdDnString -ObjectWithDn $ou
+      if ([string]::IsNullOrWhiteSpace($dnKey)) { continue }
+      $leaf = Get-AdOuLeafDisplayName -AdObject $ou -DomainDistinguishedName $domainKey -DnsRootFallback $DnsRootFallback
+      if ([string]::IsNullOrWhiteSpace($leaf)) { continue }
+      if ($grp.Count -gt 1) {
+        $parent = Get-AdOuParentFolderName -Ou $ou
+        if (-not [string]::IsNullOrWhiteSpace($parent)) {
+          $map[$dnKey] = "$leaf ($parent)"
+        } else {
+          $map[$dnKey] = $leaf
+        }
+      } else {
+        $map[$dnKey] = $leaf
+      }
+    }
+  }
+
+  foreach ($ou in $sorted) {
+    $dnKey = Get-AdDnString -ObjectWithDn $ou
+    if ([string]::IsNullOrWhiteSpace($dnKey)) { continue }
+    if ($map.ContainsKey($dnKey)) { continue }
+    $fallback = Get-AdOuLeafDisplayName -AdObject $ou -DomainDistinguishedName $domainKey -DnsRootFallback $DnsRootFallback
+    if ([string]::IsNullOrWhiteSpace($fallback) -and $dnKey -match '(?i)OU=([^,]+)') {
+      $fallback = $Matches[1].Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($fallback)) { $fallback = $dnKey }
+    $map[$dnKey] = $fallback
+  }
+  return $map
+}
+
+function Show-GpoAuditOuComboLoadFailure {
+  param($ErrorRecord)
+  $err = $ErrorRecord
+  $detail = ''
+  try {
+    if ($err.Exception) {
+      $msg = $err.Exception.Message
+      if ($null -ne $msg -and $msg.ToString().Length -gt 0) {
+        $detail = $msg.ToString()
+      }
+      $inner = $err.Exception.InnerException
+      if ($inner -and $null -ne $inner.Message -and $inner.Message.ToString().Length -gt 0) {
+        $detail += "`r`n" + $inner.Message.ToString()
+      }
+    }
+    if ([string]::IsNullOrWhiteSpace($detail)) {
+      $detail = ($err | Out-String).Trim()
+    }
+  } catch {
+    $detail = 'Error while formatting error details. Original failure occurred while loading OUs.'
+  }
+  if ([string]::IsNullOrWhiteSpace($detail)) { $detail = 'Unknown error.' }
+  [System.Windows.Forms.MessageBox]::Show(
+    "Could not load organizational units. Ensure this PC is domain-joined, you have rights to read AD, and RSAT (Active Directory Domain Services) is installed.`r`n`r`n$detail",
+    'GPO Audit Master', 'OK', 'Warning')
+}
+
+function Invoke-GpoAuditOuComboPopulate {
+  <#
+  .SYNOPSIS
+    Fills the Search OU ComboBox. Disables AutoComplete while loading; sets SelectedIndex and Text so the field is not blank.
+  #>
+  param(
+    [Parameter()]
+    [System.Windows.Forms.ComboBox]$Combo
+  )
+  if ($null -eq $Combo) { return }
+
+  $wasOpen = $Combo.DroppedDown
+  if ($wasOpen) { $Combo.DroppedDown = $false }
+
+  $Combo.SuspendLayout()
+  $acMode = $Combo.AutoCompleteMode
+  $acSrc = $Combo.AutoCompleteSource
+  $Combo.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::None
+  $Combo.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::None
+  try {
+    Import-ActiveDirectoryModule
+    $domain = Get-ADDomain -ErrorAction Stop
+    if ($null -eq $domain -or [string]::IsNullOrWhiteSpace($domain.DistinguishedName)) {
+      throw 'Get-ADDomain did not return a valid DistinguishedName. Is this computer joined to an Active Directory domain?'
+    }
+    $dn = Get-AdDnString -ObjectWithDn $domain
+    if ([string]::IsNullOrWhiteSpace($dn)) {
+      $dn = [string]$domain.DistinguishedName
+    }
+    $dnsRoot = $domain.DNSRoot
+    if ([string]::IsNullOrWhiteSpace($dnsRoot)) { $dnsRoot = $dn }
+
+    $ous = @(Get-ADOrganizationalUnit -Filter * -SearchBase $dn -SearchScope Subtree -Properties CanonicalName, Name, DistinguishedName -ErrorAction Stop |
+      Where-Object { $null -ne $_ })
+    $ouMap = Get-AdOuDisambiguatedDisplayMapFromOuList -OuList $ous -DomainDistinguishedName $dn -DnsRootFallback $dnsRoot
+    $rootLabel = if ($ouMap.ContainsKey($dn)) { $ouMap[$dn] } else { $dnsRoot }
+    if ([string]::IsNullOrWhiteSpace($rootLabel)) { $rootLabel = $dnsRoot }
+    if ([string]::IsNullOrWhiteSpace($rootLabel)) { $rootLabel = 'Domain' }
+
+    $Combo.Items.Clear()
+    [void]$Combo.Items.Add([string]$rootLabel)
+
+    foreach ($ou in ($ous | Sort-Object { Get-SafeAdOuSortKey $_ })) {
+      $dnKey = Get-AdDnString -ObjectWithDn $ou
+      if ([string]::IsNullOrWhiteSpace($dnKey)) { continue }
+      if (-not $ouMap.ContainsKey($dnKey)) { continue }
+      $lbl = $ouMap[$dnKey]
+      if ([string]::IsNullOrWhiteSpace($lbl)) { continue }
+      if ([string]::Equals($lbl, $rootLabel, [StringComparison]::OrdinalIgnoreCase)) { continue }
+      [void]$Combo.Items.Add([string]$lbl)
+    }
+
+    if ($Combo.Items.Count -gt 0) {
+      $Combo.SelectedIndex = 0
+      $Combo.Text = [string]$Combo.Items[0]
+    }
+    $Combo.Tag = $true
+  } catch {
+    Show-GpoAuditOuComboLoadFailure -ErrorRecord $_
+  } finally {
+    $Combo.AutoCompleteMode = $acMode
+    $Combo.AutoCompleteSource = $acSrc
+    $Combo.ResumeLayout()
+    $Combo.Refresh()
+    if ($wasOpen) {
+      $Combo.DroppedDown = $true
+    }
+  }
+}
+
+function Get-GpoOuLinksFromAd {
+  <#
+  .SYNOPSIS
+    Returns each GPO link: Guid, linked OU distinguishedName, and short friendly label (leaf name or disambiguated), not LDAP DN.
+  #>
+  [CmdletBinding()]
+  param()
+
+  Import-ActiveDirectoryModule
+  $domain = Get-ADDomain
+  $domainDn = Get-AdDnString -ObjectWithDn $domain
+  if ([string]::IsNullOrWhiteSpace($domainDn)) { $domainDn = [string]$domain.DistinguishedName }
+  $dnsRoot = $domain.DNSRoot
+
+  $rx = [regex]::new('LDAP://cn=\{([^}]+)\},cn=policies', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  $out = [System.Collections.Generic.List[object]]::new()
+
+  function Add-LinksFromObject {
+    param(
+      [Parameter(Mandatory)]$AdObject,
+      [Parameter(Mandatory)][string]$FriendlyPath
+    )
+    if (-not $AdObject.gplink) { return }
+    $linkDn = Get-AdDnString -ObjectWithDn $AdObject
+    if ([string]::IsNullOrWhiteSpace($linkDn)) { $linkDn = [string]$AdObject.DistinguishedName }
+    foreach ($m in $rx.Matches([string]$AdObject.gplink)) {
+      $guidStr = $m.Groups[1].Value
+      try {
+        $gid = [Guid]::Parse($guidStr)
+      } catch {
+        continue
+      }
+      $out.Add([pscustomobject]@{
+        GpoGuid     = $gid
+        LinkedOuDn  = $linkDn
+        OuFriendly  = $FriendlyPath
+      })
+    }
+  }
+
+  $domObj = Get-ADObject -Identity $domainDn -Properties gplink, canonicalName -ErrorAction Stop
+  if (-not $domObj) { throw "Get-ADObject failed for domain DN: $domainDn" }
+
+  $ous = @(Get-ADOrganizationalUnit -Filter * -SearchBase $domainDn -SearchScope Subtree -Properties gplink, canonicalName, distinguishedName, name -ErrorAction Stop)
+  $ouMap = Get-AdOuDisambiguatedDisplayMapFromOuList -OuList $ous -DomainDistinguishedName $domainDn -DnsRootFallback $dnsRoot
+
+  $domFriendly = if ($ouMap.ContainsKey($domainDn)) { $ouMap[$domainDn] } else { $dnsRoot }
+  if ([string]::IsNullOrWhiteSpace($domFriendly)) { $domFriendly = $dnsRoot }
+  if ([string]::IsNullOrWhiteSpace($domFriendly)) { $domFriendly = 'Domain' }
+  Add-LinksFromObject -AdObject $domObj -FriendlyPath $domFriendly
+
+  foreach ($ou in $ous) {
+    $dnKey = Get-AdDnString -ObjectWithDn $ou
+    if ([string]::IsNullOrWhiteSpace($dnKey)) { continue }
+    $friendly = if ($ouMap.ContainsKey($dnKey)) { $ouMap[$dnKey] } else { '' }
+    if ([string]::IsNullOrWhiteSpace($friendly)) { $friendly = $dnKey }
+    Add-LinksFromObject -AdObject $ou -FriendlyPath $friendly
+  }
+
+  return $out
+}
+
+function Get-AllowedOuDnsForSearchFilter {
+  param(
+    [Parameter(Mandatory)][string[]]$Filters,
+    [Parameter(Mandatory)][switch]$IncludeChildren
+  )
+
+  Import-ActiveDirectoryModule
+  $domain = Get-ADDomain
+  $domainDn = Get-AdDnString -ObjectWithDn $domain
+  if ([string]::IsNullOrWhiteSpace($domainDn)) { $domainDn = [string]$domain.DistinguishedName }
+  $dnsRoot = $domain.DNSRoot
+
+  $patterns = foreach ($f in $Filters) {
+    $t = $f.Trim()
+    if ($t.Length -gt 0) { $t }
+  }
+  if (-not $patterns -or $patterns.Count -eq 0) {
+    return [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  }
+
+  $ousOnly = @(
+    Get-ADOrganizationalUnit -Filter * -SearchBase $domainDn -SearchScope Subtree -Properties distinguishedName, canonicalName, name -ErrorAction Stop
+  )
+  $ouMap = Get-AdOuDisambiguatedDisplayMapFromOuList -OuList $ousOnly -DomainDistinguishedName $domainDn -DnsRootFallback $dnsRoot
+
+  $candidates = [System.Collections.Generic.List[object]]::new()
+  $domCandidate = Get-ADObject -Identity $domainDn -Properties distinguishedName, canonicalName, name -ErrorAction Stop
+  if ($domCandidate) { [void]$candidates.Add($domCandidate) }
+  foreach ($ou in $ousOnly) { [void]$candidates.Add($ou) }
+
+  $matchedBases = [System.Collections.Generic.List[string]]::new()
+  foreach ($pat in $patterns) {
+    foreach ($obj in $candidates) {
+      if ($null -eq $obj -or $null -eq $obj.DistinguishedName) { continue }
+      $dnStr = Get-AdDnString -ObjectWithDn $obj
+      if ([string]::IsNullOrWhiteSpace($dnStr)) { continue }
+      $display = if ($ouMap.ContainsKey($dnStr)) { $ouMap[$dnStr] } else { '' }
+      if ([string]::IsNullOrWhiteSpace($display)) {
+        $display = Get-AdFriendlyOuPathLabel -AdObject $obj -Fallback $(if ($dnsRoot) { $dnsRoot } else { '' })
+      }
+      $canon = Get-AdFriendlyOuPathLabel -AdObject $obj -Fallback $(if ($dnsRoot) { $dnsRoot } else { '' })
+      if ([string]::IsNullOrWhiteSpace($canon)) { $canon = $dnStr }
+      $name = if ($null -ne $obj.Name) { [string]$obj.Name } else { '' }
+      $hit = ($display.IndexOf($pat, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+        ($canon.IndexOf($pat, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+        ($name.Length -gt 0 -and $name.IndexOf($pat, [StringComparison]::OrdinalIgnoreCase) -ge 0) -or
+        ($dnStr.IndexOf($pat, [StringComparison]::OrdinalIgnoreCase) -ge 0)
+      if ($hit) { [void]$matchedBases.Add($dnStr) }
+    }
+  }
+
+  $allowed = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($dn in ($matchedBases | Select-Object -Unique)) {
+    if ($IncludeChildren) {
+      [void]$allowed.Add($dn)
+      Get-ADOrganizationalUnit -Filter * -SearchBase $dn -SearchScope Subtree -Properties distinguishedName -ErrorAction Stop |
+        ForEach-Object { [void]$allowed.Add($_.DistinguishedName) }
+    } else {
+      [void]$allowed.Add($dn)
+    }
+  }
+  return $allowed
+}
+
+function Invoke-SearchGpoSettings {
+  param(
+    [Parameter(Mandatory)][string]$SearchText,
+    [string[]]$IncludeGpoName,
+    [string]$IncludeGpoNameRegex,
+    [string[]]$IncludeGpoId,
+    [string]$SearchCsvOut,
+    [string[]]$SearchOuNameFilter,
+    [switch]$SearchOuIncludeChildren
+  )
+
+  $needle = $SearchText.Trim()
+  if ($needle.Length -eq 0) { throw "SearchText cannot be empty or whitespace." }
+
+  $allGpos = Get-GPO -All -ErrorAction Stop | Sort-Object DisplayName
+  $gpos = Select-Gpos -Gpos $allGpos -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
+
+  if (-not $gpos -or $gpos.Count -eq 0) {
+    throw "No GPOs matched the supplied filters."
+  }
+
+  $ouFilterPatterns = $null
+  if ($SearchOuNameFilter -and @($SearchOuNameFilter).Count -gt 0) {
+    $ouFilterPatterns = foreach ($s in $SearchOuNameFilter) { if ($s -and $s.Trim().Length -gt 0) { $s.Trim() } }
+  }
+
+  Write-Progress -Activity 'Searching GPO settings' -Status 'Reading GPO links from Active Directory' -PercentComplete 0
+  $links = @()
+  try {
+    $links = @(Get-GpoOuLinksFromAd)
+  } catch {
+    $adErr = ''
+    if ($_.Exception -and $_.Exception.Message) { $adErr = $_.Exception.Message } else { $adErr = ($_ | Out-String) }
+    if ($ouFilterPatterns -and $ouFilterPatterns.Count -gt 0) {
+      throw "SearchOuNameFilter requires RSAT (Active Directory PowerShell module) and rights to read OU gpLink data.`r`n`r`n$adErr"
+    }
+    Write-Warning "Could not load GPO-to-OU links; LinkedOUs column will be empty. $adErr"
+  }
+
+  $gpoGuidToFriendlyOus = @{}
+  foreach ($L in $links) {
+    if (-not $gpoGuidToFriendlyOus.ContainsKey($L.GpoGuid)) {
+      $gpoGuidToFriendlyOus[$L.GpoGuid] = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    }
+    [void]$gpoGuidToFriendlyOus[$L.GpoGuid].Add($L.OuFriendly)
+  }
+
+  if ($ouFilterPatterns -and $ouFilterPatterns.Count -gt 0) {
+    if ($links.Count -eq 0) {
+      throw "Cannot apply -SearchOuNameFilter because no GPO links were loaded from Active Directory."
+    }
+    $allowedDns = Get-AllowedOuDnsForSearchFilter -Filters $ouFilterPatterns -IncludeChildren:([bool]$SearchOuIncludeChildren)
+    if ($allowedDns.Count -eq 0) {
+      throw "No organizational units matched -SearchOuNameFilter patterns: $($ouFilterPatterns -join ', ')"
+    }
+    $allowedGuids = [System.Collections.Generic.HashSet[Guid]]::new()
+    foreach ($L in $links) {
+      if ($allowedDns.Contains($L.LinkedOuDn)) { [void]$allowedGuids.Add($L.GpoGuid) }
+    }
+    $gpos = @($gpos | Where-Object { $allowedGuids.Contains([Guid]$_.Id) })
+    if (-not $gpos -or $gpos.Count -eq 0) {
+      throw "No GPOs are linked under OUs that matched the OU filter (or no GPOs left after name/regex filters)."
+    }
+  }
+
+  $hits = [System.Collections.Generic.List[object]]::new()
+  $n = 0
+  $total = $gpos.Count
+  foreach ($g in $gpos) {
+    $n++
+    Write-Progress -Activity 'Searching GPO settings' -Status $g.DisplayName -PercentComplete (($n / [double][Math]::Max(1, $total)) * 100)
+    try {
+      $xmlText = Get-GPOReport -Guid $g.Id -ReportType Xml -ErrorAction Stop
+      [xml]$xml = $xmlText
+      $rows = Get-AllFlattenedRows -Xml $xml -Gpo $g.DisplayName
+      $gid = [Guid]$g.Id
+      $linkedOuText = ''
+      if ($null -ne $gpoGuidToFriendlyOus -and $gpoGuidToFriendlyOus.ContainsKey($gid)) {
+        $linkedOuText = ($gpoGuidToFriendlyOus[$gid] | Sort-Object) -join '; '
+      }
+      foreach ($r in $rows) {
+        if ($r.Extension -eq 'Metadata') { continue }
+        $hay = "{0} {1} {2} {3} {4} {5}" -f $r.Scope, $r.Extension, $r.Category, $r.Setting, $r.Value, $r.Type
+        if ($hay.IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+          [void]$hits.Add([pscustomobject]@{
+            GpoName   = $g.DisplayName
+            GpoId     = '{' + ([string]$g.Id).Trim('{}') + '}'
+            LinkedOUs = $linkedOuText
+            Scope     = $r.Scope
+            Extension = $r.Extension
+            Category  = $r.Category
+            Setting   = $r.Setting
+            Value     = $r.Value
+            Type      = $r.Type
+          })
+        }
+      }
+    } catch {
+      Write-Warning "Failed to search GPO '$($g.DisplayName)': $($_.Exception.Message)"
+    }
+  }
+  Write-Progress -Activity 'Searching GPO settings' -Completed
+
+  $sorted = @($hits | Sort-Object GpoName, Extension, Category, Setting)
+  $sorted | Format-Table -AutoSize
+  Write-Host ("Found {0} matching row(s)." -f $sorted.Count) -ForegroundColor Cyan
+
+  if ($SearchCsvOut) {
+    $parent = Split-Path -Parent $SearchCsvOut
+    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+      New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    $sorted | Export-Csv -NoTypeInformation -Encoding UTF8 -LiteralPath $SearchCsvOut
+    Write-Host "CSV written: $SearchCsvOut" -ForegroundColor Cyan
+  }
+
+  return $sorted
 }
 
 function Invoke-FlattenXml {
@@ -853,8 +1394,7 @@ function Show-GpoCompareDialog {
   $lblThr.Text = "Parallel throttle:"
   $form.Controls.Add($lblThr)
   $numThrottle = New-Object System.Windows.Forms.NumericUpDown
-  # Shift numeric control to the right so the value is clearer.
-  $numThrottle.Location = New-Object System.Drawing.Point -ArgumentList ($ctrlX + 140), ($y - 2)
+  $numThrottle.Location = New-Object System.Drawing.Point -ArgumentList $ctrlX, ($y - 2)
   $numThrottle.Size = New-Object System.Drawing.Size(80, 22)
   $numThrottle.Minimum = 1
   $numThrottle.Maximum = 32
@@ -940,12 +1480,13 @@ function Show-GpoAuditMasterMainGui {
     '4. Registry key+value snapshot',
     '5. Compare two registry snapshots',
     '6. Export + flatten + compare to previous',
-    '7. Export + flatten two GPOs and compare'
+    '7. Export + flatten two GPOs and compare',
+    '8. Search settings (text) across GPOs'
   )
 
   $form = New-Object System.Windows.Forms.Form
   $form.Text = "GPO Audit Master"
-  $form.Size = New-Object System.Drawing.Size(560, 480)
+  $form.Size = New-Object System.Drawing.Size(560, 560)
   $form.StartPosition = "CenterScreen"
   $form.FormBorderStyle = "FixedDialog"
   $form.MaximizeBox = $false
@@ -1002,6 +1543,10 @@ function Show-GpoAuditMasterMainGui {
     $ctrlY = $Y.Value - 2
     $ctrl.Location = New-Object System.Drawing.Point -ArgumentList 150, $ctrlY
     if ($ctrl -is [System.Windows.Forms.TextBox]) { $ctrl.Size = New-Object System.Drawing.Size(280, 22) }
+    elseif ($ctrl -is [System.Windows.Forms.ComboBox]) {
+      if ($ctrl.Size.Width -lt 10) { $ctrl.Size = New-Object System.Drawing.Size(320, 22) }
+      $ctrl.IntegralHeight = $false
+    }
     $P.Controls.Add($ctrl)
     $Y.Value += 32
   }
@@ -1034,6 +1579,10 @@ function Show-GpoAuditMasterMainGui {
     $outFolderTb = $null
     $baselineTb = $null
     $compareOutTb = $null
+    $searchTb = $null
+    $searchCsvTb = $null
+    $ouFilterCb = $null
+    $ouChildrenChk = $null
 
     switch ($Index) {
       0 { # XmlExport
@@ -1147,6 +1696,90 @@ function Show-GpoAuditMasterMainGui {
         $info.ForeColor = [System.Drawing.Color]::DarkSlateGray
         $contentPanel.Controls.Add($info)
       }
+      7 { # Search settings across GPOs
+        $searchTb = New-Object System.Windows.Forms.TextBox
+        $searchTb.Size = New-Object System.Drawing.Size(320, 22)
+        Add-Row $contentPanel ([ref]$ry) "Search text:" $searchTb
+        $hint = New-Object System.Windows.Forms.Label
+        $hint.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry
+        $hint.Size = New-Object System.Drawing.Size(440, 36)
+        $hint.Text = "Case-insensitive substring on policy names, registry paths, values, categories, etc. Example: turn off"
+        $hint.ForeColor = [System.Drawing.Color]::DarkSlateGray
+        $contentPanel.Controls.Add($hint)
+        $ry += 40
+        $ouFilterCb = New-Object System.Windows.Forms.ComboBox
+        $ouFilterCb.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDown
+        $ouFilterCb.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::SuggestAppend
+        $ouFilterCb.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::ListItems
+        $ouFilterCb.Size = New-Object System.Drawing.Size(320, 22)
+        Add-Row $contentPanel ([ref]$ry) "OU filter (optional):" $ouFilterCb
+        $ouHint = New-Object System.Windows.Forms.Label
+        $ouHint.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry
+        $ouHint.Size = New-Object System.Drawing.Size(440, 44)
+        $ouHint.Text = "Type to search OU name or path (canonical). Comma = multiple patterns. OU list loads automatically when you choose this action; you can edit the text or pick from the list."
+        $ouHint.ForeColor = [System.Drawing.Color]::DarkSlateGray
+        $contentPanel.Controls.Add($ouHint)
+        $ry += 48
+        $adRsatStatus = New-Object System.Windows.Forms.Label
+        $adRsatStatus.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry
+        $adRsatStatus.Size = New-Object System.Drawing.Size(480, 40)
+        $adRsatStatus.AutoSize = $false
+        try {
+          if (Test-ActiveDirectoryModuleAvailable) {
+            $adRsatStatus.Text = "RSAT Active Directory PowerShell module: installed (module package found on this PC)."
+            $adRsatStatus.ForeColor = [System.Drawing.Color]::DarkGreen
+          } else {
+            $adRsatStatus.Text = "RSAT Active Directory module: NOT found. Install Optional feature: Active Directory Domain Services and Lightweight Directory Services Tools, then restart PowerShell. Required for OU list and LinkedOUs."
+            $adRsatStatus.ForeColor = [System.Drawing.Color]::DarkRed
+          }
+        } catch {
+          $adRsatStatus.Text = "Could not verify RSAT Active Directory module (see PowerShell window for errors)."
+          $adRsatStatus.ForeColor = [System.Drawing.Color]::DarkOrange
+        }
+        $contentPanel.Controls.Add($adRsatStatus)
+        $ry += 44
+        $ouChildrenChk = New-Object System.Windows.Forms.CheckBox
+        $ouChildrenChk.Text = "Include child OUs (GPOs linked under matching OU or any descendant)"
+        $ouChildrenChk.Size = New-Object System.Drawing.Size(440, 22)
+        $ouChildrenChk.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry
+        $contentPanel.Controls.Add($ouChildrenChk)
+        $ry += 28
+        $ouComboRef = $ouFilterCb
+        # Preload on focus so Items exist before the list opens; DropDown+AutoComplete alone often leaves the list empty.
+        $ouFilterCb.Add_GotFocus({ if ($null -ne $ouComboRef) { Invoke-GpoAuditOuComboPopulate -Combo $ouComboRef } })
+        $ouFilterCb.Add_DropDown({ if ($null -ne $ouComboRef) { Invoke-GpoAuditOuComboPopulate -Combo $ouComboRef } })
+        $searchCsvTb = New-Object System.Windows.Forms.TextBox
+        $searchCsvTb.Size = New-Object System.Drawing.Size(320, 22)
+        Add-Row $contentPanel ([ref]$ry) "CSV output (opt):" $searchCsvTb
+        $btnSaveCsv = New-Object System.Windows.Forms.Button
+        $btnSaveCsv.Location = New-Object System.Drawing.Point -ArgumentList 436, ($ry - 10)
+        $btnSaveCsv.Size = New-Object System.Drawing.Size(70, 24)
+        $btnSaveCsv.Text = "Save..."
+        $btnSaveCsv.Tag = $searchCsvTb
+        $btnSaveCsv.Add_Click({
+          param($sender, $e)
+          $tb = $sender.Tag
+          if ($null -eq $tb -or $tb -isnot [System.Windows.Forms.TextBox]) { return }
+          $sfd = New-Object System.Windows.Forms.SaveFileDialog
+          $sfd.Filter = "CSV (*.csv)|*.csv|All files (*.*)|*.*"
+          $sfd.FileName = "GpoSettingSearch.csv"
+          if ($sfd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $tb.Text = $sfd.FileName
+          }
+        })
+        $contentPanel.Controls.Add($btnSaveCsv)
+        $ry += 28
+        $filterChk = New-Object System.Windows.Forms.CheckBox; $filterChk.Text = "Filter to specific GPOs"; $filterChk.Size = New-Object System.Drawing.Size(200, 22)
+        Add-Row $contentPanel ([ref]$ry) "" $filterChk
+        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size(320, 22)
+        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $l = New-Object System.Windows.Forms.Label; $l.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l.Text = "GPO names (comma):"; $l.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l); $ry += 22
+        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size(320, 22)
+        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $l2 = New-Object System.Windows.Forms.Label; $l2.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l2.Text = "Display name regex:"; $l2.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l2); $ry += 22
+        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size(320, 22)
+        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2)
+      }
     }
 
     @{
@@ -1154,11 +1787,26 @@ function Show-GpoAuditMasterMainGui {
       NamesTb = $namesTb; RegexTb = $regexTb; GuidsTb = $guidsTb
       LeftFolderTb = $leftFolderTb; RightFolderTb = $rightFolderTb; OutFolderTb = $outFolderTb
       BaselineTb = $baselineTb; CompareOutTb = $compareOutTb
+      SearchTb = $searchTb; SearchCsvTb = $searchCsvTb
+      OuFilterCb = $ouFilterCb; OuChildrenChk = $ouChildrenChk
     }
   }
 
   $panelState = Build-OptionsPanel 0
-  $cbAction.Add_SelectedIndexChanged({ $script:panelState = Build-OptionsPanel $cbAction.SelectedIndex })
+  $cbAction.Add_SelectedIndexChanged({
+    $script:panelState = Build-OptionsPanel $cbAction.SelectedIndex
+    if ($cbAction.SelectedIndex -eq 7) {
+      $ouCombo = $script:panelState.OuFilterCb
+      if ($null -ne $ouCombo) {
+        try {
+          # Must call synchronously on the UI thread; BeginInvoke + MethodInvoker does not bind $cb in PowerShell (Combo was null).
+          Invoke-GpoAuditOuComboPopulate -Combo $ouCombo
+        } catch {
+          Show-GpoAuditOuComboLoadFailure -ErrorRecord $_
+        }
+      }
+    }
+  })
 
   function Get-FilterParams {
     param($state)
@@ -1247,6 +1895,23 @@ function Show-GpoAuditMasterMainGui {
           $rightCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo2))
           Invoke-FlattenGpoCompare -LeftCsv $leftCsv -RightCsv $rightCsv -OutCsv $choices.ComparePath
           $statusLabel.Text = "Done: $($choices.ComparePath)"
+        }
+        7 {
+          $q = if ($state.SearchTb) { $state.SearchTb.Text.Trim() } else { '' }
+          if (-not $q) {
+            [System.Windows.Forms.MessageBox]::Show("Enter search text (e.g. turn off).", "GPO Audit Master", "OK", "Warning")
+            return
+          }
+          $csvPath = if ($state.SearchCsvTb -and $state.SearchCsvTb.Text.Trim()) { $state.SearchCsvTb.Text.Trim() } else { $null }
+          $fp = Get-FilterParams $state
+          $ouPatterns = $null
+          if ($state.OuFilterCb -and $state.OuFilterCb.Text.Trim()) {
+            $ouPatterns = @($state.OuFilterCb.Text.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+          }
+          $ouChild = $false
+          if ($state.OuChildrenChk) { $ouChild = [bool]$state.OuChildrenChk.Checked }
+          $rows = Invoke-SearchGpoSettings -SearchText $q -IncludeGpoName $fp.IncludeGpoName -IncludeGpoNameRegex $fp.IncludeGpoNameRegex -IncludeGpoId $fp.IncludeGpoId -SearchCsvOut $csvPath -SearchOuNameFilter $ouPatterns -SearchOuIncludeChildren:$ouChild
+          $statusLabel.Text = "Found $($rows.Count) match(es).$(if ($csvPath) { " CSV: $csvPath" })"
         }
       }
     } catch {
@@ -1498,7 +2163,6 @@ function Invoke-RegistrySnapshotCompare {
       GpoId     = $r.GpoId
       Scope     = $r.Scope
       KeyPath   = $r.KeyPath
-      ValueName = $r.ValueName
       OldType   = $l.ValueType
       OldValue  = $l.ValueData
       NewType   = $r.ValueType
@@ -1519,6 +2183,10 @@ if (-not $PSBoundParameters.ContainsKey('Mode')) {
 }
 
 # -------------------- Main dispatcher --------------------
+if (-not $Mode -and $PSBoundParameters.ContainsKey('SearchText')) {
+  $Mode = 'SearchSettings'
+}
+
 switch ($Mode) {
   'XmlExport' {
     Invoke-XmlExport -OutDir $OutDir -Throttle $Throttle -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
@@ -1535,5 +2203,8 @@ switch ($Mode) {
   }
   'RegistrySnapshotCompare' {
     Invoke-RegistrySnapshotCompare -Left $LeftFolder -Right $RightFolder -OutFolder $OutFolderCompare
+  }
+  'SearchSettings' {
+    Invoke-SearchGpoSettings -SearchText $SearchText -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId -SearchCsvOut $SearchCsvOut -SearchOuNameFilter $SearchOuNameFilter -SearchOuIncludeChildren:$SearchOuIncludeChildren
   }
 }
