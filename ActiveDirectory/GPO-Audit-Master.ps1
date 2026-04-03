@@ -1,19 +1,29 @@
 <#
 .SYNOPSIS
-  Master GPO audit script: export XML for selected GPOs, flatten XML to CSV,
-  take/compare registry key+value snapshots, and search all GPOs for settings
-  by partial text – all in one place.
+  GPO Audit Master: export Group Policy XML, flatten settings to CSV, capture and
+  compare registry-oriented snapshots, and search all GPOs for settings by partial text.
 
 .DESCRIPTION
-  This combines the logic from:
-    - All GPO export.ps1
-    - Flatten GPOs into CSV file.ps1
-    - GPO Snapshot - Registry KeyValue.ps1
+  Use this tool to work with Group Policy in Active Directory: export reports,
+  analyze them as CSVs, and find where settings are defined without opening each
+  GPO in the console.
 
-  Instead of always exporting ALL GPOs, you can filter the GPOs to process by:
-    - Display name list
-    - Display name regex
-    - GPO GUID list
+  - XmlExport / XmlExportAndFlatten: Get-GPOReport XML for selected GPOs (with
+    throttling); optionally flatten into CSV in the same run.
+  - FlattenXml: Convert XML already under OutDir\Exports into per-GPO CSVs and
+    master rollups (administrative templates, registry, GPP, security, advanced
+    audit policy, services, local groups, scripts, WLAN, metadata).
+  - RegistrySnapshotExport / RegistrySnapshotCompare: Build registry key/value
+    views from GPO XML and diff two snapshot folders.
+  - SearchSettings: Case-insensitive substring search across flattened settings;
+    optional OU link filter and CSV output.
+
+  Filter GPOs by display name list, display name regex, and/or GPO GUID. Use
+  -DomainDnsName to target another domain (default: this computer's domain). Omit
+  -Mode to run the interactive GUI.
+
+  Requires the Group Policy module (RSAT). The Active Directory module is required
+  for domain selection, OU-based search, and GPO link features.
 
 .EXAMPLES
   # 1) Export XML only for a few GPOs
@@ -44,6 +54,9 @@
 
   # 7) Same, but only GPOs linked under OUs matching "IT" or "Sales" (substring on OU name or canonical path), including child OUs
   .\GPO-Audit-Master.ps1 -Mode SearchSettings -SearchText "turn off" -SearchOuNameFilter "IT","Sales" -SearchOuIncludeChildren
+
+  # 8) Target a specific domain (DNS name) for GPO + AD; default is this computer's domain. GUI: use the Domain dropdown.
+  .\GPO-Audit-Master.ps1 -Mode SearchSettings -SearchText "audit" -DomainDnsName "contoso.com"
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Xml')]
@@ -94,6 +107,10 @@ param(
   [Parameter(ParameterSetName='Search')]
   [switch]$SearchOuIncludeChildren,
 
+  # DNS name of the domain for Group Policy and AD queries (e.g. contoso.com). Omit to use this computer's domain. In the GUI, use the Domain dropdown.
+  [Parameter()]
+  [string]$DomainDnsName,
+
   # Registry snapshot compare
   [Parameter(ParameterSetName='SnapshotCompare', Mandatory)]
   [string]$LeftFolder,
@@ -106,6 +123,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Resolved by Initialize-GpoAuditAdContext: target domain DNS name for Get-GPO -Domain, and LDAP server for Get-AD* -Server
+$script:GpoAuditDomainDns = $null
+$script:GpoAuditAdServer = $null
 
 function Write-FatalError {
   param([Parameter(Mandatory)][string]$Message)
@@ -180,6 +201,59 @@ function Import-ActiveDirectoryModule {
   }
 }
 
+function Initialize-GpoAuditAdContext {
+  <#
+  .SYNOPSIS
+    Sets script scope for target AD domain: DNS name (for Get-GPO -Domain) and PDC (for Get-AD* -Server).
+  #>
+  [CmdletBinding()]
+  param([string]$DomainDnsName)
+  Import-ActiveDirectoryModule
+  if ([string]::IsNullOrWhiteSpace($DomainDnsName)) {
+    $d = Get-ADDomain -ErrorAction Stop
+  } else {
+    $t = $DomainDnsName.Trim()
+    $d = Get-ADDomain -Identity $t -Server $t -ErrorAction Stop
+  }
+  $script:GpoAuditDomainDns = $d.DNSRoot
+  $script:GpoAuditAdServer = $d.PDCEmulator
+  if ([string]::IsNullOrWhiteSpace($script:GpoAuditAdServer)) {
+    $script:GpoAuditAdServer = $script:GpoAuditDomainDns
+  }
+}
+
+function Get-GpoAuditForestDomainDnsNames {
+  <#
+  .SYNOPSIS
+    DNS names of domains to show in the GUI picker (forest domains, or current domain only).
+  #>
+  [CmdletBinding()]
+  param()
+  Import-ActiveDirectoryModule
+  try {
+    $f = Get-ADForest -ErrorAction Stop
+    $list = @($f.Domains | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+    if ($list.Count -gt 0) { return $list }
+  } catch { }
+  $d = Get-ADDomain -ErrorAction Stop
+  return @($d.DNSRoot)
+}
+
+function Get-GpoAuditGpoDomainSplat {
+  <#
+  .SYNOPSIS
+    Splat hashtable for Get-GPO / Get-GPOReport -Domain when a target domain is selected.
+  #>
+  if ([string]::IsNullOrWhiteSpace($script:GpoAuditDomainDns)) { return @{} }
+  return @{ Domain = $script:GpoAuditDomainDns }
+}
+
+function Ensure-GpoAuditAdContextInitialized {
+  if ([string]::IsNullOrWhiteSpace($script:GpoAuditAdServer)) {
+    Initialize-GpoAuditAdContext -DomainDnsName $null
+  }
+}
+
 function Ensure-Folder {
   param([Parameter(Mandatory)][string]$Path)
   if (-not (Test-Path -LiteralPath $Path)) {
@@ -238,7 +312,9 @@ function Invoke-XmlExport {
   $exportDir = Join-Path $OutDir 'Exports'
   Ensure-Folder -Path $exportDir
 
-  $allGpos = Get-GPO -All | Sort-Object DisplayName
+  Ensure-GpoAuditAdContextInitialized
+  $gpoDom = Get-GpoAuditGpoDomainSplat
+  $allGpos = Get-GPO @gpoDom -All | Sort-Object DisplayName
   $gpos = Select-Gpos -Gpos $allGpos -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
 
   if (-not $gpos -or $gpos.Count -eq 0) {
@@ -247,13 +323,16 @@ function Invoke-XmlExport {
 
   $hasPS7 = $PSVersionTable.PSVersion.Major -ge 7
   $xmlPaths = @()
+  $domDns = $script:GpoAuditDomainDns
 
   if ($hasPS7) {
     $xmlPaths = $gpos | ForEach-Object -Parallel {
       try {
         $safe = ($PSItem.DisplayName -replace '[^\w\.-]+','_')
         $file = Join-Path $using:exportDir ("{0}.xml" -f $safe)
-        Get-GPOReport -Name $PSItem.DisplayName -ReportType XML -Path $file
+        $domParams = @{}
+        if ($using:domDns) { $domParams['Domain'] = $using:domDns }
+        Get-GPOReport @domParams -Name $PSItem.DisplayName -ReportType XML -Path $file
         $file
       } catch {
         Write-Warning "Failed to export '$($PSItem.DisplayName)': $($_.Exception.Message)"
@@ -265,7 +344,7 @@ function Invoke-XmlExport {
       try {
         $safe = New-SafeName $g.DisplayName
         $file = Join-Path $exportDir ("{0}.xml" -f $safe)
-        Get-GPOReport -Name $g.DisplayName -ReportType XML -Path $file
+        Get-GPOReport @gpoDom -Name $g.DisplayName -ReportType XML -Path $file
         $xmlPaths += $file
       } catch {
         Write-Warning "Failed to export '$($g.DisplayName)': $($_.Exception.Message)"
@@ -384,11 +463,59 @@ function Get-GPPRegistryRows {
   return $rows
 }
 
+function Get-GpoAuditSettingValueDisplay {
+  param([string]$Raw)
+  if ([string]::IsNullOrWhiteSpace($Raw)) { return $null }
+  $t = $Raw.Trim()
+  switch ($t) {
+    '0' { return 'Unchanged' }
+    '1' { return 'Success only' }
+    '2' { return 'Failure only' }
+    '3' { return 'Success and Failure' }
+    '4' { return 'No auditing' }
+    default { return $t }
+  }
+}
+
+function Get-AdvancedAuditPolicyRows {
+  param([Parameter(Mandatory)][xml]$Xml,[Parameter(Mandatory)][string]$Gpo)
+  $rows = [System.Collections.Generic.List[object]]::new()
+  foreach ($a in (Get-XPathNodes -Xml $Xml -XPath "//*[local-name()='AuditSetting']")) {
+    $sub = Get-FirstText -Node $a -XPath ".//*[local-name()='SubcategoryName']"
+    if (-not $sub) { $sub = Get-FirstText -Node $a -XPath ".//*[local-name()='Subcategory']" }
+    if (-not $sub) { try { $sub = $a.SubcategoryName } catch { $sub = $null } }
+    if (-not $sub) { try { $sub = $a.Subcategory } catch { $sub = $null } }
+    if (-not $sub) { $sub = '(unknown subcategory)' }
+
+    $inc = Get-FirstText -Node $a -XPath ".//*[local-name()='InclusionSetting']"
+    if (-not $inc) { try { $inc = $a.InclusionSetting } catch { $inc = $null } }
+
+    $sv = Get-FirstText -Node $a -XPath ".//*[local-name()='SettingValue']"
+    if (-not $sv) { try { $sv = $a.SettingValue } catch { $sv = $null } }
+
+    $val = $null
+    if (-not [string]::IsNullOrWhiteSpace($inc)) { $val = $inc.Trim() }
+    if ([string]::IsNullOrWhiteSpace($val)) { $val = Get-GpoAuditSettingValueDisplay -Raw $sv }
+    if ([string]::IsNullOrWhiteSpace($val)) { $val = [string]$sv }
+
+    $guid = Get-FirstText -Node $a -XPath ".//*[local-name()='SubcategoryGUID']"
+    if (-not $guid) { try { $guid = $a.SubcategoryGUID } catch { $guid = $null } }
+    if (-not [string]::IsNullOrWhiteSpace($guid)) {
+      if ([string]::IsNullOrWhiteSpace($val)) { $val = "GUID=$guid" } else { $val = "$val; GUID=$guid" }
+    }
+
+    $setting = "Audit: $sub"
+    $rows.Add( (New-FlattenRow -Gpo $Gpo -Scope (Get-ScopeFromNode $a) -Extension 'Security' -Category 'AdvancedAuditPolicy' -Setting $setting -Value $val -Type 'AuditSetting') )
+  }
+  return $rows
+}
+
 function Get-SecuritySettingRows {
   param([Parameter(Mandatory)][xml]$Xml,[Parameter(Mandatory)][string]$Gpo)
   $rows = [System.Collections.Generic.List[object]]::new()
   foreach ($s in (Get-XPathNodes -Xml $Xml -XPath "//*[local-name()='SecuritySettings']")) {
     foreach ($n in $s.SelectNodes(".//*[not(*)]")) {
+      if ($null -ne $n.SelectSingleNode("ancestor::*[local-name()='AuditSetting']")) { continue }
       $name = $n.Name
       $val  = $n.InnerText
       if ([string]::IsNullOrWhiteSpace($val)) { continue }
@@ -475,6 +602,7 @@ function Get-AllFlattenedRows {
   Add-FlattenRows -Target $rows -Items (Get-AdminTemplatePolicyRows   -Xml $Xml -Gpo $Gpo)
   Add-FlattenRows -Target $rows -Items (Get-AdminTemplateRegistryRows -Xml $Xml -Gpo $Gpo)
   Add-FlattenRows -Target $rows -Items (Get-GPPRegistryRows           -Xml $Xml -Gpo $Gpo)
+  Add-FlattenRows -Target $rows -Items (Get-AdvancedAuditPolicyRows   -Xml $Xml -Gpo $Gpo)
   Add-FlattenRows -Target $rows -Items (Get-SecuritySettingRows       -Xml $Xml -Gpo $Gpo)
   Add-FlattenRows -Target $rows -Items (Get-NTServiceRows             -Xml $Xml -Gpo $Gpo)
   Add-FlattenRows -Target $rows -Items (Get-LugsRows                  -Xml $Xml -Gpo $Gpo)
@@ -572,7 +700,7 @@ function Get-AdOuLeafDisplayName {
   <#
   .SYNOPSIS
     Short OU label: leaf name only (AD Name / last segment of canonical), not the full path.
-    Domain NC uses DNS root (e.g. contoso.com).
+    Domain NC uses DNS root (e.g. FLSEN.GOV).
   #>
   param(
     $AdObject,
@@ -725,7 +853,8 @@ function Invoke-GpoAuditOuComboPopulate {
   $Combo.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::None
   try {
     Import-ActiveDirectoryModule
-    $domain = Get-ADDomain -ErrorAction Stop
+    Ensure-GpoAuditAdContextInitialized
+    $domain = Get-ADDomain -Identity $script:GpoAuditDomainDns -Server $script:GpoAuditAdServer -ErrorAction Stop
     if ($null -eq $domain -or [string]::IsNullOrWhiteSpace($domain.DistinguishedName)) {
       throw 'Get-ADDomain did not return a valid DistinguishedName. Is this computer joined to an Active Directory domain?'
     }
@@ -736,7 +865,7 @@ function Invoke-GpoAuditOuComboPopulate {
     $dnsRoot = $domain.DNSRoot
     if ([string]::IsNullOrWhiteSpace($dnsRoot)) { $dnsRoot = $dn }
 
-    $ous = @(Get-ADOrganizationalUnit -Filter * -SearchBase $dn -SearchScope Subtree -Properties CanonicalName, Name, DistinguishedName -ErrorAction Stop |
+    $ous = @(Get-ADOrganizationalUnit -Filter * -SearchBase $dn -SearchScope Subtree -Server $script:GpoAuditAdServer -Properties CanonicalName, Name, DistinguishedName -ErrorAction Stop |
       Where-Object { $null -ne $_ })
     $ouMap = Get-AdOuDisambiguatedDisplayMapFromOuList -OuList $ous -DomainDistinguishedName $dn -DnsRootFallback $dnsRoot
     $rootLabel = if ($ouMap.ContainsKey($dn)) { $ouMap[$dn] } else { $dnsRoot }
@@ -783,10 +912,12 @@ function Get-GpoOuLinksFromAd {
   param()
 
   Import-ActiveDirectoryModule
-  $domain = Get-ADDomain
+  Ensure-GpoAuditAdContextInitialized
+  $domain = Get-ADDomain -Identity $script:GpoAuditDomainDns -Server $script:GpoAuditAdServer
   $domainDn = Get-AdDnString -ObjectWithDn $domain
   if ([string]::IsNullOrWhiteSpace($domainDn)) { $domainDn = [string]$domain.DistinguishedName }
   $dnsRoot = $domain.DNSRoot
+  $adSrv = $script:GpoAuditAdServer
 
   $rx = [regex]::new('LDAP://cn=\{([^}]+)\},cn=policies', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
   $out = [System.Collections.Generic.List[object]]::new()
@@ -814,10 +945,10 @@ function Get-GpoOuLinksFromAd {
     }
   }
 
-  $domObj = Get-ADObject -Identity $domainDn -Properties gplink, canonicalName -ErrorAction Stop
+  $domObj = Get-ADObject -Identity $domainDn -Server $adSrv -Properties gplink, canonicalName -ErrorAction Stop
   if (-not $domObj) { throw "Get-ADObject failed for domain DN: $domainDn" }
 
-  $ous = @(Get-ADOrganizationalUnit -Filter * -SearchBase $domainDn -SearchScope Subtree -Properties gplink, canonicalName, distinguishedName, name -ErrorAction Stop)
+  $ous = @(Get-ADOrganizationalUnit -Filter * -SearchBase $domainDn -SearchScope Subtree -Server $adSrv -Properties gplink, canonicalName, distinguishedName, name -ErrorAction Stop)
   $ouMap = Get-AdOuDisambiguatedDisplayMapFromOuList -OuList $ous -DomainDistinguishedName $domainDn -DnsRootFallback $dnsRoot
 
   $domFriendly = if ($ouMap.ContainsKey($domainDn)) { $ouMap[$domainDn] } else { $dnsRoot }
@@ -843,10 +974,12 @@ function Get-AllowedOuDnsForSearchFilter {
   )
 
   Import-ActiveDirectoryModule
-  $domain = Get-ADDomain
+  Ensure-GpoAuditAdContextInitialized
+  $domain = Get-ADDomain -Identity $script:GpoAuditDomainDns -Server $script:GpoAuditAdServer
   $domainDn = Get-AdDnString -ObjectWithDn $domain
   if ([string]::IsNullOrWhiteSpace($domainDn)) { $domainDn = [string]$domain.DistinguishedName }
   $dnsRoot = $domain.DNSRoot
+  $adSrv = $script:GpoAuditAdServer
 
   $patterns = foreach ($f in $Filters) {
     $t = $f.Trim()
@@ -857,12 +990,12 @@ function Get-AllowedOuDnsForSearchFilter {
   }
 
   $ousOnly = @(
-    Get-ADOrganizationalUnit -Filter * -SearchBase $domainDn -SearchScope Subtree -Properties distinguishedName, canonicalName, name -ErrorAction Stop
+    Get-ADOrganizationalUnit -Filter * -SearchBase $domainDn -SearchScope Subtree -Server $adSrv -Properties distinguishedName, canonicalName, name -ErrorAction Stop
   )
   $ouMap = Get-AdOuDisambiguatedDisplayMapFromOuList -OuList $ousOnly -DomainDistinguishedName $domainDn -DnsRootFallback $dnsRoot
 
   $candidates = [System.Collections.Generic.List[object]]::new()
-  $domCandidate = Get-ADObject -Identity $domainDn -Properties distinguishedName, canonicalName, name -ErrorAction Stop
+  $domCandidate = Get-ADObject -Identity $domainDn -Server $adSrv -Properties distinguishedName, canonicalName, name -ErrorAction Stop
   if ($domCandidate) { [void]$candidates.Add($domCandidate) }
   foreach ($ou in $ousOnly) { [void]$candidates.Add($ou) }
 
@@ -891,7 +1024,7 @@ function Get-AllowedOuDnsForSearchFilter {
   foreach ($dn in ($matchedBases | Select-Object -Unique)) {
     if ($IncludeChildren) {
       [void]$allowed.Add($dn)
-      Get-ADOrganizationalUnit -Filter * -SearchBase $dn -SearchScope Subtree -Properties distinguishedName -ErrorAction Stop |
+      Get-ADOrganizationalUnit -Filter * -SearchBase $dn -SearchScope Subtree -Server $adSrv -Properties distinguishedName -ErrorAction Stop |
         ForEach-Object { [void]$allowed.Add($_.DistinguishedName) }
     } else {
       [void]$allowed.Add($dn)
@@ -914,7 +1047,9 @@ function Invoke-SearchGpoSettings {
   $needle = $SearchText.Trim()
   if ($needle.Length -eq 0) { throw "SearchText cannot be empty or whitespace." }
 
-  $allGpos = Get-GPO -All -ErrorAction Stop | Sort-Object DisplayName
+  Ensure-GpoAuditAdContextInitialized
+  $gpoDom = Get-GpoAuditGpoDomainSplat
+  $allGpos = Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName
   $gpos = Select-Gpos -Gpos $allGpos -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
 
   if (-not $gpos -or $gpos.Count -eq 0) {
@@ -972,7 +1107,7 @@ function Invoke-SearchGpoSettings {
     $n++
     Write-Progress -Activity 'Searching GPO settings' -Status $g.DisplayName -PercentComplete (($n / [double][Math]::Max(1, $total)) * 100)
     try {
-      $xmlText = Get-GPOReport -Guid $g.Id -ReportType Xml -ErrorAction Stop
+      $xmlText = Get-GPOReport @gpoDom -Guid $g.Id -ReportType Xml -ErrorAction Stop
       [xml]$xml = $xmlText
       $rows = Get-AllFlattenedRows -Xml $xml -Gpo $g.DisplayName
       $gid = [Guid]$g.Id
@@ -1004,7 +1139,9 @@ function Invoke-SearchGpoSettings {
   Write-Progress -Activity 'Searching GPO settings' -Completed
 
   $sorted = @($hits | Sort-Object GpoName, Extension, Category, Setting)
-  $sorted | Format-Table -AutoSize
+  # Format-Table must go to the host only; otherwise it pollutes the output stream and
+  # $x = Invoke-SearchGpoSettings merges format objects with the return value (wrong .Count in GUI).
+  $sorted | Format-Table -AutoSize | Out-Host
   Write-Host ("Found {0} matching row(s)." -f $sorted.Count) -ForegroundColor Cyan
 
   if ($SearchCsvOut) {
@@ -1303,7 +1440,9 @@ function Show-GpoCompareDialog {
 
   $gpos = @()
   try {
-    $gpos = Get-GPO -All -ErrorAction Stop | Sort-Object DisplayName | ForEach-Object { $_.DisplayName }
+    Ensure-GpoAuditAdContextInitialized
+    $gpoDom = Get-GpoAuditGpoDomainSplat
+    $gpos = Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName | ForEach-Object { $_.DisplayName }
   } catch {
     [System.Windows.Forms.MessageBox]::Show("Could not load GPO list: $($_.Exception.Message)", "GPO Compare", "OK", "Error")
     return $null
@@ -1468,7 +1607,11 @@ function Show-GpoCompareDialog {
 
 # -------------------- Main GUI: all actions in one window --------------------
 function Show-GpoAuditMasterMainGui {
-  param([string]$DefaultOutDir = "C:\Temp\GPO_Audit", [int]$DefaultThrottle = 6)
+  param(
+    [string]$DefaultOutDir = "C:\Temp\GPO_Audit",
+    [int]$DefaultThrottle = 6,
+    [string]$InitialDomainDnsName = $null
+  )
 
   Add-Type -AssemblyName System.Windows.Forms
   Add-Type -AssemblyName System.Drawing
@@ -1486,21 +1629,45 @@ function Show-GpoAuditMasterMainGui {
 
   $form = New-Object System.Windows.Forms.Form
   $form.Text = "GPO Audit Master"
-  $form.Size = New-Object System.Drawing.Size(560, 560)
+  $form.Size = New-Object System.Drawing.Size(736, 640)
   $form.StartPosition = "CenterScreen"
   $form.FormBorderStyle = "FixedDialog"
   $form.MaximizeBox = $false
 
+  # Inner layout (matches content panel width); keeps Browse/Save inside the panel
+  $gMarginR = 12
+  $gPanelW = 688
+  $gCtrlLeft = 150
+  $gBrowseBtnW = 72
+  $gGap = 8
+  $gTextWithBrowseW = [Math]::Max(280, $gPanelW - $gCtrlLeft - $gGap - $gBrowseBtnW - $gMarginR)
+  $gTextWNoBtn = [Math]::Max(320, $gPanelW - $gCtrlLeft - $gMarginR)
+  $gBrowseX = $gCtrlLeft + $gTextWithBrowseW + $gGap
+  $gHintW = $gPanelW - 16
+
   $y = 12
+  $lblDomain = New-Object System.Windows.Forms.Label
+  $lblDomain.Location = New-Object System.Drawing.Point -ArgumentList 16, $y
+  $lblDomain.Size = New-Object System.Drawing.Size($gPanelW, 20)
+  $lblDomain.Text = "Domain (DNS) for GPOs and Active Directory:"
+  $form.Controls.Add($lblDomain)
+  $y += 24
+  $domainCb = New-Object System.Windows.Forms.ComboBox
+  $domainCb.Location = New-Object System.Drawing.Point -ArgumentList 16, $y
+  $domainCb.Size = New-Object System.Drawing.Size($gPanelW, 24)
+  $domainCb.DropDownStyle = "DropDownList"
+  $form.Controls.Add($domainCb)
+  $y += 36
+
   $lblAction = New-Object System.Windows.Forms.Label
   $lblAction.Location = New-Object System.Drawing.Point -ArgumentList 16, $y
-  $lblAction.Size = New-Object System.Drawing.Size(200, 20)
+  $lblAction.Size = New-Object System.Drawing.Size(400, 20)
   $lblAction.Text = "What do you want to do?"
   $form.Controls.Add($lblAction)
   $y += 24
   $cbAction = New-Object System.Windows.Forms.ComboBox
   $cbAction.Location = New-Object System.Drawing.Point -ArgumentList 16, $y
-  $cbAction.Size = New-Object System.Drawing.Size(500, 24)
+  $cbAction.Size = New-Object System.Drawing.Size($gPanelW, 24)
   $cbAction.DropDownStyle = "DropDownList"
   foreach ($a in $actions) { [void]$cbAction.Items.Add($a) }
   $cbAction.SelectedIndex = 0
@@ -1509,13 +1676,13 @@ function Show-GpoAuditMasterMainGui {
 
   $contentPanel = New-Object System.Windows.Forms.Panel
   $contentPanel.Location = New-Object System.Drawing.Point -ArgumentList 16, $y
-  $contentPanel.Size = New-Object System.Drawing.Size(500, 300)
+  $contentPanel.Size = New-Object System.Drawing.Size($gPanelW, 380)
   $contentPanel.BorderStyle = "FixedSingle"
   $contentPanel.AutoScroll = $true
   $form.Controls.Add($contentPanel)
 
   $btnRun = New-Object System.Windows.Forms.Button
-  $runBtnY = $y + 308
+  $runBtnY = $y + 388
   $btnRun.Location = New-Object System.Drawing.Point -ArgumentList 16, $runBtnY
   $btnRun.Size = New-Object System.Drawing.Size(90, 28)
   $btnRun.Text = "Run"
@@ -1528,7 +1695,8 @@ function Show-GpoAuditMasterMainGui {
 
   $statusLabel = New-Object System.Windows.Forms.Label
   $statusLabel.Location = New-Object System.Drawing.Point -ArgumentList 210, ($runBtnY + 6)
-  $statusLabel.Size = New-Object System.Drawing.Size(320, 20)
+  $statusLabel.Size = New-Object System.Drawing.Size(500, 36)
+  $statusLabel.AutoSize = $false
   $statusLabel.Text = ""
   $statusLabel.ForeColor = [System.Drawing.Color]::DarkGreen
   $form.Controls.Add($statusLabel)
@@ -1536,15 +1704,15 @@ function Show-GpoAuditMasterMainGui {
   function Add-Row { param([System.Windows.Forms.Panel]$P, [ref]$Y, [string]$LabelText, [object]$Control)
     $lbl = New-Object System.Windows.Forms.Label
     $lbl.Location = New-Object System.Drawing.Point -ArgumentList 8, $Y.Value
-    $lbl.Size = New-Object System.Drawing.Size(140, 20)
+    $lbl.Size = New-Object System.Drawing.Size(136, 20)
     $lbl.Text = $LabelText
     $P.Controls.Add($lbl)
     $ctrl = $Control
     $ctrlY = $Y.Value - 2
-    $ctrl.Location = New-Object System.Drawing.Point -ArgumentList 150, $ctrlY
-    if ($ctrl -is [System.Windows.Forms.TextBox]) { $ctrl.Size = New-Object System.Drawing.Size(280, 22) }
+    $ctrl.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, $ctrlY
+    if ($ctrl -is [System.Windows.Forms.TextBox]) { $ctrl.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22) }
     elseif ($ctrl -is [System.Windows.Forms.ComboBox]) {
-      if ($ctrl.Size.Width -lt 10) { $ctrl.Size = New-Object System.Drawing.Size(320, 22) }
+      if ($ctrl.Size.Width -lt 10) { $ctrl.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22) }
       $ctrl.IntegralHeight = $false
     }
     $P.Controls.Add($ctrl)
@@ -1563,6 +1731,27 @@ function Show-GpoAuditMasterMainGui {
     })
     $P.Controls.Add($btn)
   }
+
+  $script:gpoDomainUiSuppressEvent = $false
+  $domainCb.Add_SelectedIndexChanged({
+    if ($script:gpoDomainUiSuppressEvent) { return }
+    if ($null -eq $domainCb.SelectedItem) { return }
+    $sel = [string]$domainCb.SelectedItem
+    try {
+      Initialize-GpoAuditAdContext -DomainDnsName $sel
+      $statusLabel.Text = "Domain: $script:GpoAuditDomainDns"
+      if ($script:panelState -and $script:panelState.OuFilterCb) {
+        $ou = $script:panelState.OuFilterCb
+        $ou.Items.Clear()
+        $ou.Tag = $null
+        $ou.Text = ''
+      }
+    } catch {
+      [System.Windows.Forms.MessageBox]::Show(
+        "Could not connect to domain '$sel': $($_.Exception.Message)",
+        'GPO Audit Master', 'OK', 'Error')
+    }
+  })
 
   function Build-OptionsPanel {
     param([int]$Index)
@@ -1588,7 +1777,8 @@ function Show-GpoAuditMasterMainGui {
       0 { # XmlExport
         $outDirTb = New-Object System.Windows.Forms.TextBox; $outDirTb.Text = $DefaultOutDir
         Add-Row $contentPanel ([ref]$ry) "Output folder:" $outDirTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $outDirTb "Output folder for GPO XML exports"
+        $outDirTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $outDirTb "Output folder for GPO XML exports"
         $ry += 28
         $throttleNum = New-Object System.Windows.Forms.NumericUpDown
         $throttleNum.Minimum = 1; $throttleNum.Maximum = 32; $throttleNum.Value = $DefaultThrottle; $throttleNum.Size = New-Object System.Drawing.Size(60, 22)
@@ -1596,24 +1786,26 @@ function Show-GpoAuditMasterMainGui {
         $ry += 8
         $filterChk = New-Object System.Windows.Forms.CheckBox; $filterChk.Text = "Filter to specific GPOs"; $filterChk.Size = New-Object System.Drawing.Size(200, 22)
         Add-Row $contentPanel ([ref]$ry) "" $filterChk
-        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size(320, 22); $namesTb.Height = 22
-        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22); $namesTb.Height = 22
+        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l = New-Object System.Windows.Forms.Label; $l.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l.Text = "GPO names (comma):"; $l.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l); $ry += 22
-        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l2 = New-Object System.Windows.Forms.Label; $l2.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l2.Text = "Display name regex:"; $l2.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l2); $ry += 22
-        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2)
+        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2)
       }
       1 { # FlattenXml
         $outDirTb = New-Object System.Windows.Forms.TextBox; $outDirTb.Text = $DefaultOutDir
         Add-Row $contentPanel ([ref]$ry) "Output folder (Exports):" $outDirTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $outDirTb "Folder containing Exports and where Flattened will be written"
+        $outDirTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $outDirTb "Folder containing Exports and where Flattened will be written"
       }
       2 { # XmlExportAndFlatten
         $outDirTb = New-Object System.Windows.Forms.TextBox; $outDirTb.Text = $DefaultOutDir
         Add-Row $contentPanel ([ref]$ry) "Output folder:" $outDirTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $outDirTb "Output folder"
+        $outDirTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $outDirTb "Output folder"
         $ry += 28
         $throttleNum = New-Object System.Windows.Forms.NumericUpDown
         $throttleNum.Minimum = 1; $throttleNum.Maximum = 32; $throttleNum.Value = $DefaultThrottle; $throttleNum.Size = New-Object System.Drawing.Size(60, 22)
@@ -1621,76 +1813,83 @@ function Show-GpoAuditMasterMainGui {
         $ry += 8
         $filterChk = New-Object System.Windows.Forms.CheckBox; $filterChk.Text = "Filter to specific GPOs"; $filterChk.Size = New-Object System.Drawing.Size(200, 22)
         Add-Row $contentPanel ([ref]$ry) "" $filterChk
-        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l = New-Object System.Windows.Forms.Label; $l.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l.Text = "GPO names (comma):"; $l.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l); $ry += 22
-        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l2 = New-Object System.Windows.Forms.Label; $l2.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l2.Text = "Display name regex:"; $l2.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l2); $ry += 22
-        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2)
+        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2)
       }
       3 { # RegistrySnapshotExport
         $outDirTb = New-Object System.Windows.Forms.TextBox; $outDirTb.Text = $DefaultOutDir
         Add-Row $contentPanel ([ref]$ry) "Snapshot folder:" $outDirTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $outDirTb "Snapshot output folder"
+        $outDirTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $outDirTb "Snapshot output folder"
         $ry += 8
         $filterChk = New-Object System.Windows.Forms.CheckBox; $filterChk.Text = "Filter to specific GPOs"; $filterChk.Size = New-Object System.Drawing.Size(200, 22)
         Add-Row $contentPanel ([ref]$ry) "" $filterChk
-        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l = New-Object System.Windows.Forms.Label; $l.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l.Text = "GPO names (comma):"; $l.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l); $ry += 22
-        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l2 = New-Object System.Windows.Forms.Label; $l2.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l2.Text = "Display name regex:"; $l2.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l2); $ry += 22
-        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2)
+        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2)
       }
       4 { # RegistrySnapshotCompare
-        $leftFolderTb = New-Object System.Windows.Forms.TextBox; $leftFolderTb.Size = New-Object System.Drawing.Size(280, 22)
+        $leftFolderTb = New-Object System.Windows.Forms.TextBox; $leftFolderTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
         Add-Row $contentPanel ([ref]$ry) "Baseline folder (Left):" $leftFolderTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $leftFolderTb "Baseline snapshot folder"
+        $leftFolderTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $leftFolderTb "Baseline snapshot folder"
         $ry += 28
-        $rightFolderTb = New-Object System.Windows.Forms.TextBox; $rightFolderTb.Size = New-Object System.Drawing.Size(280, 22)
+        $rightFolderTb = New-Object System.Windows.Forms.TextBox; $rightFolderTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
         Add-Row $contentPanel ([ref]$ry) "Current folder (Right):" $rightFolderTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $rightFolderTb "Current snapshot folder"
+        $rightFolderTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $rightFolderTb "Current snapshot folder"
         $ry += 28
-        $outFolderTb = New-Object System.Windows.Forms.TextBox; $outFolderTb.Size = New-Object System.Drawing.Size(280, 22)
+        $outFolderTb = New-Object System.Windows.Forms.TextBox; $outFolderTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
         Add-Row $contentPanel ([ref]$ry) "Output folder for diff:" $outFolderTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $outFolderTb "Compare output folder"
+        $outFolderTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $outFolderTb "Compare output folder"
       }
       5 { # Export + flatten + compare to previous
         $outDirTb = New-Object System.Windows.Forms.TextBox; $outDirTb.Text = $DefaultOutDir
         Add-Row $contentPanel ([ref]$ry) "Output folder (new run):" $outDirTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $outDirTb "Output folder"
+        $outDirTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $outDirTb "Output folder"
         $ry += 28
         $throttleNum = New-Object System.Windows.Forms.NumericUpDown
         $throttleNum.Minimum = 1; $throttleNum.Maximum = 32; $throttleNum.Value = $DefaultThrottle; $throttleNum.Size = New-Object System.Drawing.Size(60, 22)
         Add-Row $contentPanel ([ref]$ry) "Parallel throttle:" $throttleNum
         $ry += 28
-        $baselineTb = New-Object System.Windows.Forms.TextBox; $baselineTb.Size = New-Object System.Drawing.Size(280, 22)
+        $baselineTb = New-Object System.Windows.Forms.TextBox; $baselineTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
         Add-Row $contentPanel ([ref]$ry) "Baseline folder:" $baselineTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $baselineTb "Folder with previous MasterFlatten_AllGPOs.csv"
+        $baselineTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $baselineTb "Folder with previous MasterFlatten_AllGPOs.csv"
         $ry += 28
-        $compareOutTb = New-Object System.Windows.Forms.TextBox; $compareOutTb.Size = New-Object System.Drawing.Size(280, 22)
+        $compareOutTb = New-Object System.Windows.Forms.TextBox; $compareOutTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
         Add-Row $contentPanel ([ref]$ry) "Compare output folder:" $compareOutTb
-        Add-BrowseButton $contentPanel 436 ($ry - 10) $compareOutTb "Where to write compare CSV"
+        $compareOutTb.Width = $gTextWithBrowseW
+        Add-BrowseButton $contentPanel $gBrowseX ($ry - 10) $compareOutTb "Where to write compare CSV"
         $ry += 8
         $filterChk = New-Object System.Windows.Forms.CheckBox; $filterChk.Text = "Filter to specific GPOs"; $filterChk.Size = New-Object System.Drawing.Size(200, 22)
         Add-Row $contentPanel ([ref]$ry) "" $filterChk
-        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l = New-Object System.Windows.Forms.Label; $l.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l.Text = "GPO names (comma):"; $l.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l); $ry += 22
-        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l2 = New-Object System.Windows.Forms.Label; $l2.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l2.Text = "Display name regex:"; $l2.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l2); $ry += 22
-        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2)
+        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2)
       }
       6 { # Two GPO compare
         $info = New-Object System.Windows.Forms.Label
         $info.Location = New-Object System.Drawing.Point -ArgumentList 12, 12
-        $info.Size = New-Object System.Drawing.Size(460, 80)
+        $info.Size = New-Object System.Drawing.Size(($gPanelW - 24), 80)
         $info.Text = "Click Run to open the GPO selection dialog. You will choose two GPOs, output folder, throttle, and diff file path there."
         $info.AutoSize = $false
         $info.ForeColor = [System.Drawing.Color]::DarkSlateGray
@@ -1698,32 +1897,34 @@ function Show-GpoAuditMasterMainGui {
       }
       7 { # Search settings across GPOs
         $searchTb = New-Object System.Windows.Forms.TextBox
-        $searchTb.Size = New-Object System.Drawing.Size(320, 22)
+        $searchTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
         Add-Row $contentPanel ([ref]$ry) "Search text:" $searchTb
         $hint = New-Object System.Windows.Forms.Label
         $hint.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry
-        $hint.Size = New-Object System.Drawing.Size(440, 36)
+        $hint.MaximumSize = New-Object System.Drawing.Size($gHintW, 0)
+        $hint.AutoSize = $true
         $hint.Text = "Case-insensitive substring on policy names, registry paths, values, categories, etc. Example: turn off"
         $hint.ForeColor = [System.Drawing.Color]::DarkSlateGray
         $contentPanel.Controls.Add($hint)
-        $ry += 40
+        $ry += 48
         $ouFilterCb = New-Object System.Windows.Forms.ComboBox
         $ouFilterCb.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDown
         $ouFilterCb.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::SuggestAppend
         $ouFilterCb.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::ListItems
-        $ouFilterCb.Size = New-Object System.Drawing.Size(320, 22)
+        $ouFilterCb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
         Add-Row $contentPanel ([ref]$ry) "OU filter (optional):" $ouFilterCb
         $ouHint = New-Object System.Windows.Forms.Label
         $ouHint.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry
-        $ouHint.Size = New-Object System.Drawing.Size(440, 44)
+        $ouHint.MaximumSize = New-Object System.Drawing.Size($gHintW, 0)
+        $ouHint.AutoSize = $true
         $ouHint.Text = "Type to search OU name or path (canonical). Comma = multiple patterns. OU list loads automatically when you choose this action; you can edit the text or pick from the list."
         $ouHint.ForeColor = [System.Drawing.Color]::DarkSlateGray
         $contentPanel.Controls.Add($ouHint)
-        $ry += 48
+        $ry += 64
         $adRsatStatus = New-Object System.Windows.Forms.Label
         $adRsatStatus.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry
-        $adRsatStatus.Size = New-Object System.Drawing.Size(480, 40)
-        $adRsatStatus.AutoSize = $false
+        $adRsatStatus.MaximumSize = New-Object System.Drawing.Size($gHintW, 0)
+        $adRsatStatus.AutoSize = $true
         try {
           if (Test-ActiveDirectoryModuleAvailable) {
             $adRsatStatus.Text = "RSAT Active Directory PowerShell module: installed (module package found on this PC)."
@@ -1737,22 +1938,24 @@ function Show-GpoAuditMasterMainGui {
           $adRsatStatus.ForeColor = [System.Drawing.Color]::DarkOrange
         }
         $contentPanel.Controls.Add($adRsatStatus)
-        $ry += 44
+        $ry += 56
         $ouChildrenChk = New-Object System.Windows.Forms.CheckBox
         $ouChildrenChk.Text = "Include child OUs (GPOs linked under matching OU or any descendant)"
-        $ouChildrenChk.Size = New-Object System.Drawing.Size(440, 22)
+        $ouChildrenChk.AutoSize = $false
+        $ouChildrenChk.Size = New-Object System.Drawing.Size($gHintW, 36)
         $ouChildrenChk.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry
         $contentPanel.Controls.Add($ouChildrenChk)
-        $ry += 28
+        $ry += 40
         $ouComboRef = $ouFilterCb
         # Preload on focus so Items exist before the list opens; DropDown+AutoComplete alone often leaves the list empty.
         $ouFilterCb.Add_GotFocus({ if ($null -ne $ouComboRef) { Invoke-GpoAuditOuComboPopulate -Combo $ouComboRef } })
         $ouFilterCb.Add_DropDown({ if ($null -ne $ouComboRef) { Invoke-GpoAuditOuComboPopulate -Combo $ouComboRef } })
         $searchCsvTb = New-Object System.Windows.Forms.TextBox
-        $searchCsvTb.Size = New-Object System.Drawing.Size(320, 22)
+        $searchCsvTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
         Add-Row $contentPanel ([ref]$ry) "CSV output (opt):" $searchCsvTb
+        $searchCsvTb.Width = $gTextWithBrowseW
         $btnSaveCsv = New-Object System.Windows.Forms.Button
-        $btnSaveCsv.Location = New-Object System.Drawing.Point -ArgumentList 436, ($ry - 10)
+        $btnSaveCsv.Location = New-Object System.Drawing.Point -ArgumentList $gBrowseX, ($ry - 10)
         $btnSaveCsv.Size = New-Object System.Drawing.Size(70, 24)
         $btnSaveCsv.Text = "Save..."
         $btnSaveCsv.Tag = $searchCsvTb
@@ -1771,14 +1974,14 @@ function Show-GpoAuditMasterMainGui {
         $ry += 28
         $filterChk = New-Object System.Windows.Forms.CheckBox; $filterChk.Text = "Filter to specific GPOs"; $filterChk.Size = New-Object System.Drawing.Size(200, 22)
         Add-Row $contentPanel ([ref]$ry) "" $filterChk
-        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $namesTb = New-Object System.Windows.Forms.TextBox; $namesTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($namesTb); $namesTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l = New-Object System.Windows.Forms.Label; $l.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l.Text = "GPO names (comma):"; $l.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l); $ry += 22
-        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2); $ry += 28
+        $regexTb = New-Object System.Windows.Forms.TextBox; $regexTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($regexTb); $regexTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2); $ry += 28
         $l2 = New-Object System.Windows.Forms.Label; $l2.Location = New-Object System.Drawing.Point -ArgumentList 8, $ry; $l2.Text = "Display name regex:"; $l2.Size = New-Object System.Drawing.Size(140, 20); $contentPanel.Controls.Add($l2); $ry += 22
-        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size(320, 22)
-        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList 150, ($ry - 2)
+        $guidsTb = New-Object System.Windows.Forms.TextBox; $guidsTb.Size = New-Object System.Drawing.Size($gTextWNoBtn, 22)
+        $contentPanel.Controls.Add($guidsTb); $guidsTb.Location = New-Object System.Drawing.Point -ArgumentList $gCtrlLeft, ($ry - 2)
       }
     }
 
@@ -1793,6 +1996,43 @@ function Show-GpoAuditMasterMainGui {
   }
 
   $panelState = Build-OptionsPanel 0
+  $form.Add_Shown({
+    try {
+      $script:gpoDomainUiSuppressEvent = $true
+      $domainCb.Items.Clear()
+      $names = Get-GpoAuditForestDomainDnsNames
+      foreach ($n in $names) { [void]$domainCb.Items.Add($n) }
+      $idx = 0
+      $want = $InitialDomainDnsName
+      if (-not [string]::IsNullOrWhiteSpace($want)) {
+        $want = $want.Trim()
+        for ($i = 0; $i -lt $domainCb.Items.Count; $i++) {
+          if ([string]::Equals([string]$domainCb.Items[$i], $want, [StringComparison]::OrdinalIgnoreCase)) {
+            $idx = $i
+            break
+          }
+        }
+      }
+      if ($domainCb.Items.Count -gt 0) { $domainCb.SelectedIndex = $idx }
+    } catch {
+      [System.Windows.Forms.MessageBox]::Show(
+        "Could not list domains (forest or current domain). $($_.Exception.Message)",
+        'GPO Audit Master', 'OK', 'Warning')
+    } finally {
+      $script:gpoDomainUiSuppressEvent = $false
+    }
+    try {
+      if ($domainCb.Items.Count -gt 0 -and $null -ne $domainCb.SelectedItem) {
+        Initialize-GpoAuditAdContext -DomainDnsName ([string]$domainCb.SelectedItem)
+        $statusLabel.Text = "Domain: $script:GpoAuditDomainDns"
+      }
+    } catch {
+      [System.Windows.Forms.MessageBox]::Show(
+        "Could not initialize AD context: $($_.Exception.Message)",
+        'GPO Audit Master', 'OK', 'Warning')
+    }
+    $cbAction.Focus()
+  })
   $cbAction.Add_SelectedIndexChanged({
     $script:panelState = Build-OptionsPanel $cbAction.SelectedIndex
     if ($cbAction.SelectedIndex -eq 7) {
@@ -1910,8 +2150,8 @@ function Show-GpoAuditMasterMainGui {
           }
           $ouChild = $false
           if ($state.OuChildrenChk) { $ouChild = [bool]$state.OuChildrenChk.Checked }
-          $rows = Invoke-SearchGpoSettings -SearchText $q -IncludeGpoName $fp.IncludeGpoName -IncludeGpoNameRegex $fp.IncludeGpoNameRegex -IncludeGpoId $fp.IncludeGpoId -SearchCsvOut $csvPath -SearchOuNameFilter $ouPatterns -SearchOuIncludeChildren:$ouChild
-          $statusLabel.Text = "Found $($rows.Count) match(es).$(if ($csvPath) { " CSV: $csvPath" })"
+          $searchHits = @(Invoke-SearchGpoSettings -SearchText $q -IncludeGpoName $fp.IncludeGpoName -IncludeGpoNameRegex $fp.IncludeGpoNameRegex -IncludeGpoId $fp.IncludeGpoId -SearchCsvOut $csvPath -SearchOuNameFilter $ouPatterns -SearchOuIncludeChildren:$ouChild)
+          $statusLabel.Text = "Found $($searchHits.Count) match(es).$(if ($csvPath) { " CSV: $csvPath" })"
         }
       }
     } catch {
@@ -1921,7 +2161,6 @@ function Show-GpoAuditMasterMainGui {
   })
 
   $btnClose.Add_Click({ $form.Close() })
-  $form.Add_Shown({ $cbAction.Focus() })
   [void]$form.ShowDialog()
 }
 
@@ -1932,7 +2171,9 @@ function Get-GpoRegistryRows {
     [Parameter(Mandatory)][object]$Gpo
   )
 
-  $xmlText = Get-GPOReport -Guid $Gpo.Id -ReportType Xml -ErrorAction Stop
+  Ensure-GpoAuditAdContextInitialized
+  $gpoDom = Get-GpoAuditGpoDomainSplat
+  $xmlText = Get-GPOReport @gpoDom -Guid $Gpo.Id -ReportType Xml -ErrorAction Stop
   [xml]$doc = $xmlText
 
   $nsm = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
@@ -2059,7 +2300,9 @@ function Invoke-RegistrySnapshotExport {
 
   Ensure-Folder -Path $Folder
 
-  $allGpos = Get-GPO -All -ErrorAction Stop | Sort-Object DisplayName
+  Ensure-GpoAuditAdContextInitialized
+  $gpoDom = Get-GpoAuditGpoDomainSplat
+  $allGpos = Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName
   $gpos = Select-Gpos -Gpos $allGpos -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
 
   if (-not $gpos -or $gpos.Count -eq 0) {
@@ -2073,7 +2316,7 @@ function Invoke-RegistrySnapshotExport {
 
   $meta = [pscustomobject]@{
     CreatedAt           = (Get-Date).ToString('o')
-    Domain              = $env:USERDNSDOMAIN
+    Domain              = $(if ($script:GpoAuditDomainDns) { $script:GpoAuditDomainDns } else { $env:USERDNSDOMAIN })
     Computer            = $env:COMPUTERNAME
     TotalGpoCount       = $allGpos.Count
     ExportedGpoCount    = $gpos.Count
@@ -2178,13 +2421,27 @@ function Invoke-RegistrySnapshotCompare {
 
 # -------- GUI mode (when no -Mode is passed) --------
 if (-not $PSBoundParameters.ContainsKey('Mode')) {
-  Show-GpoAuditMasterMainGui -DefaultOutDir $OutDir -DefaultThrottle $Throttle
+  Show-GpoAuditMasterMainGui -DefaultOutDir $OutDir -DefaultThrottle $Throttle -InitialDomainDnsName $DomainDnsName
   return
 }
 
 # -------------------- Main dispatcher --------------------
 if (-not $Mode -and $PSBoundParameters.ContainsKey('SearchText')) {
   $Mode = 'SearchSettings'
+}
+
+$modesNeedingAdDomain = @(
+  'XmlExport',
+  'XmlExportAndFlatten',
+  'RegistrySnapshotExport',
+  'SearchSettings'
+)
+if ($Mode -and ($Mode -in $modesNeedingAdDomain)) {
+  try {
+    Initialize-GpoAuditAdContext -DomainDnsName $DomainDnsName
+  } catch {
+    Write-FatalError "Could not connect to Active Directory for the selected domain. Use -DomainDnsName or join this PC to a domain.`r`n`r`n$($_.Exception.Message)"
+  }
 }
 
 switch ($Mode) {
