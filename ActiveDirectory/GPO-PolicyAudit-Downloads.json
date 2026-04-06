@@ -1,0 +1,25 @@
+{
+  "MicrosoftSecurityBaselines": [
+    {
+      "Id": "Win11-24H2",
+      "DisplayName": "Windows 11 v24H2 Security Baseline",
+      "Url": "https://download.microsoft.com/download/8/5/C/85C25433-A1B0-4FFA-9429-7E023E7DA8D8/Windows%2011%20v24H2%20Security%20Baseline.zip"
+    },
+    {
+      "Id": "Win11-25H2",
+      "DisplayName": "Windows 11 v25H2 Security Baseline",
+      "Url": "https://download.microsoft.com/download/8/5/C/85C25433-A1B0-4FFA-9429-7E023E7DA8D8/Windows%2011%20v25H2%20Security%20Baseline.zip"
+    },
+    {
+      "Id": "Win10-22H2",
+      "DisplayName": "Windows 10 v22H2 Security Baseline",
+      "Url": "https://download.microsoft.com/download/8/5/C/85C25433-A1B0-4FFA-9429-7E023E7DA8D8/Windows%2010%20version%2022H2%20Security%20Baseline.zip"
+    },
+    {
+      "Id": "WS2022",
+      "DisplayName": "Windows Server 2022 Security Baseline",
+      "Url": "https://download.microsoft.com/download/8/5/C/85C25433-A1B0-4FFA-9429-7E023E7DA8D8/Windows%20Server%202022%20Security%20Baseline.zip"
+    }
+  ],
+  "NistNotes": "NIST does not publish Windows GPO XML baselines. Place your agency baseline exports (GPO XML or extracted reports) under Templates\\\\NIST\\\\*.xml, or set -NistXmlPath to a file. The script merges the first Microsoft baseline export you flatten with your NIST-side XML."
+}
