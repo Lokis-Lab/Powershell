@@ -98,8 +98,8 @@ function Start-DiffReview {
         $selColor = if ($d.Selected) { 'Green' } else { 'DarkGray' }
         Write-Host "  Decision    : $selLabel" -ForegroundColor $selColor
 
-        $input = Read-Host "  Action [A/D/C/S/AA/DA/AC/Q]"
-        switch ($input.Trim().ToUpper()) {
+        $userChoice = Read-Host "  Action [A/D/C/S/AA/DA/AC/Q]"
+        switch ($userChoice.Trim().ToUpper()) {
             'A' {
                 $d.Selected = $true
                 Write-Host "    -> Accepted (selected for remediation)" -ForegroundColor Green

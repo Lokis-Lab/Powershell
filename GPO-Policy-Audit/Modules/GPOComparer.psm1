@@ -86,7 +86,8 @@ function Compare-GpoToBaseline {
         [Parameter(Mandatory)][PSCustomObject[]]$GpoSettings,
         [string]$GpoName = '',
         [string]$GpoGuid = '',
-        [string]$OuPath = ''
+        [string]$OuPath = '',
+        [switch]$IncludeMatches
     )
 
     $masterDict = [ordered]@{}
@@ -117,8 +118,13 @@ function Compare-GpoToBaseline {
                     -SettingName $ms.SettingName `
                     -BaselineValue $ms.SettingValue -GpoValue $gs.SettingValue `
                     -Status ValueMismatch -GpoName $GpoName -GpoGuid $GpoGuid -OuPath $OuPath))
+            } elseif ($IncludeMatches) {
+                $diffs.Add((New-DiffEntry -Key $key `
+                    -Category $ms.Category -SubCategory $ms.SubCategory `
+                    -SettingName $ms.SettingName `
+                    -BaselineValue $ms.SettingValue -GpoValue $gs.SettingValue `
+                    -Status Match -GpoName $GpoName -GpoGuid $GpoGuid -OuPath $OuPath))
             }
-            # else: Match — no diff entry needed
         } else {
             $diffs.Add((New-DiffEntry -Key $key `
                 -Category $ms.Category -SubCategory $ms.SubCategory `
@@ -228,7 +234,7 @@ function Compare-HierarchyToBaseline {
 
         Write-Host "  [compare] $($gpo.DisplayName)" -ForegroundColor Gray
         $diffs = Compare-GpoToBaseline -MasterSettings $MasterSettings -GpoSettings $gpoSettings `
-            -GpoName $gpo.DisplayName -GpoGuid $gpo.Id -OuPath $ouLinks
+            -GpoName $gpo.DisplayName -GpoGuid $gpo.Id -OuPath $ouLinks -IncludeMatches:$IncludeMatches
 
         $perGpo[$gpo.Id] = $diffs
         foreach ($d in $diffs) { $allDiffs.Add($d) }
@@ -253,7 +259,7 @@ function Compare-HierarchyToBaseline {
 
         $effective = Get-EffectiveGpoSettings -GpoReportPaths $orderedPaths
         $ouDiffs = Compare-GpoToBaseline -MasterSettings $MasterSettings -GpoSettings $effective `
-            -GpoName "(Effective @ $($node.Name))" -GpoGuid '' -OuPath $node.DistinguishedName
+            -GpoName "(Effective @ $($node.Name))" -GpoGuid '' -OuPath $node.DistinguishedName -IncludeMatches:$IncludeMatches
 
         $perOu[$node.DistinguishedName] = $ouDiffs
     }

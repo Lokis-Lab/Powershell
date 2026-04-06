@@ -36,6 +36,10 @@ Connect-ExchangeOnline
 
 ## 📚 Script Catalog
 
+### `GPO-Policy-Audit/`
+
+- **[Invoke-GPOPolicyAudit.ps1](GPO-Policy-Audit/Invoke-GPOPolicyAudit.ps1)** — Full NIST/STIG + Microsoft baseline GPO audit: download baselines, merge with conflict resolution, compare against domain GPOs in OU hierarchy, interactive diff review with risk acceptance, and export remediated GPO backups. See [GPO-Policy-Audit/README.md](GPO-Policy-Audit/README.md) for full documentation.
+
 ### `ActiveDirectory/`
 
 - **[Get-ADPasswordExpiryReport.ps1](ActiveDirectory/Get-ADPasswordExpiryReport.ps1)** — Report AD users close to password expiry (requires RSAT/AD module).

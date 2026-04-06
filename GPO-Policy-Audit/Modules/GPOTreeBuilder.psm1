@@ -165,10 +165,10 @@ function Resolve-GpLinks {
 
     # gpLink format: [LDAP://cn={GUID},cn=policies,cn=system,DC=...;linkOptions]
     $pattern = '\[LDAP://[Cc][Nn]=\{([0-9a-fA-F\-]+)\}[^;]*;(\d+)\]'
-    $matches = [regex]::Matches($GpLinkValue, $pattern)
+    $linkMatches = [regex]::Matches($GpLinkValue, $pattern)
 
     $order = 1
-    foreach ($m in $matches) {
+    foreach ($m in $linkMatches) {
         $guid   = $m.Groups[1].Value
         $opts   = [int]$m.Groups[2].Value
         $enabled  = ($opts -band 1) -eq 0   # bit 0 = disabled
@@ -178,7 +178,9 @@ function Resolve-GpLinks {
         try {
             $gpo = Get-GPO -Guid $guid -Domain ($DC -replace ':.*') -ErrorAction SilentlyContinue
             if ($gpo) { $gpoName = $gpo.DisplayName }
-        } catch { }
+        } catch {
+            Write-Verbose "Could not resolve GPO name for GUID $guid : $($_.Exception.Message)"
+        }
 
         $results.Add([PSCustomObject]@{
             GpoGuid   = $guid

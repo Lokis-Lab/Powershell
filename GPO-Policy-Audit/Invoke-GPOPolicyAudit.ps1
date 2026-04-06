@@ -226,7 +226,7 @@ if ($Mode -in @('Full','MergeBaselines','CompareOnly')) {
         -ConflictResolution $ConflictResolution
 
     # Save master template
-    $templatePaths = Export-MasterTemplate -MasterSettings $mergeResult.MasterSettings -OutputFolder $mergeDir
+    Export-MasterTemplate -MasterSettings $mergeResult.MasterSettings -OutputFolder $mergeDir | Out-Null
     if ($mergeResult.Conflicts.Count -gt 0) {
         Export-ConflictReport -Conflicts $mergeResult.Conflicts -OutputFolder $mergeDir
     }
