@@ -74,6 +74,10 @@ Connect-ExchangeOnline
 
 - **[Build-CVELocalRepository.ps1](Vulnerabilities/Build-CVELocalRepository.ps1)** — Download CVEs from NVD API into rolling CSVs (handles rate limits).
 
+### `Modules/`
+
+- **[Get-Secret.ps1](Modules/Private/Get-Secret.ps1)** — Private helper function for retrieving secrets used by other scripts.
+
 
 ---
 
