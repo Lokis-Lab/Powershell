@@ -3,7 +3,7 @@
 
 ## Our commitment
 
-We are committed to a welcoming, harassment-free experience for everyone who participates in this community, regardless of age, body size, disability, ethnicity, gender identity and expression, level of experience, education, nationality, personal appearance, race, religion, sexual identity and orientation, socio-economic status, or any other characteristic.
+We are committed to a welcoming, harassment-free experience for everyone who participates in this community, regardless of age, disability, ethnicity, level of experience, education, personal appearance, race, religion, socio-economic status, or any other characteristic.
 
 ## Expected behavior
 
