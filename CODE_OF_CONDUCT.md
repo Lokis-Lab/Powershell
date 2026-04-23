@@ -10,7 +10,6 @@ We are committed to a welcoming, harassment-free experience for everyone who par
 All participants are expected to:
 
 - **Be respectful** — Disagree constructively. Assume good faith unless there is clear evidence otherwise.
-- **Be inclusive** — Use welcoming language. Make space for others to speak and contribute.
 - **Be professional** — Stay on topic in issues and PRs. Critique ideas and work, not people.
 - **Be careful with power** — Maintainers and frequent contributors set the tone. Use that influence to uphold these standards, not to dismiss or intimidate others.
 - **Respect privacy** — Do not share private information about others without consent.
