@@ -248,9 +248,19 @@ function Get-GpoAuditGpoDomainSplat {
   return @{ Domain = $script:GpoAuditDomainDns }
 }
 
+function Set-GpoAuditRequestedDomain {
+  <#
+  .SYNOPSIS
+    Records an optional domain for GroupPolicy cmdlets without requiring the AD module.
+  #>
+  param([string]$DomainDnsName)
+  if ([string]::IsNullOrWhiteSpace($DomainDnsName)) { return }
+  $script:GpoAuditDomainDns = $DomainDnsName.Trim()
+}
+
 function Ensure-GpoAuditAdContextInitialized {
   if ([string]::IsNullOrWhiteSpace($script:GpoAuditAdServer)) {
-    Initialize-GpoAuditAdContext -DomainDnsName $null
+    Initialize-GpoAuditAdContext -DomainDnsName $script:GpoAuditDomainDns
   }
 }
 
@@ -312,7 +322,6 @@ function Invoke-XmlExport {
   $exportDir = Join-Path $OutDir 'Exports'
   Ensure-Folder -Path $exportDir
 
-  Ensure-GpoAuditAdContextInitialized
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $allGpos = Get-GPO @gpoDom -All | Sort-Object DisplayName
   $gpos = Select-Gpos -Gpos $allGpos -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
@@ -1047,7 +1056,6 @@ function Invoke-SearchGpoSettings {
   $needle = $SearchText.Trim()
   if ($needle.Length -eq 0) { throw "SearchText cannot be empty or whitespace." }
 
-  Ensure-GpoAuditAdContextInitialized
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $allGpos = Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName
   $gpos = Select-Gpos -Gpos $allGpos -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
@@ -1061,17 +1069,22 @@ function Invoke-SearchGpoSettings {
     $ouFilterPatterns = foreach ($s in $SearchOuNameFilter) { if ($s -and $s.Trim().Length -gt 0) { $s.Trim() } }
   }
 
-  Write-Progress -Activity 'Searching GPO settings' -Status 'Reading GPO links from Active Directory' -PercentComplete 0
   $links = @()
-  try {
-    $links = @(Get-GpoOuLinksFromAd)
-  } catch {
-    $adErr = ''
-    if ($_.Exception -and $_.Exception.Message) { $adErr = $_.Exception.Message } else { $adErr = ($_ | Out-String) }
-    if ($ouFilterPatterns -and $ouFilterPatterns.Count -gt 0) {
-      throw "SearchOuNameFilter requires RSAT (Active Directory PowerShell module) and rights to read OU gpLink data.`r`n`r`n$adErr"
+  $needsOuLinks = ($ouFilterPatterns -and $ouFilterPatterns.Count -gt 0)
+  if ($needsOuLinks -or (Test-ActiveDirectoryModuleAvailable)) {
+    try {
+      Write-Progress -Activity 'Searching GPO settings' -Status 'Reading GPO links from Active Directory' -PercentComplete 0
+      $links = @(Get-GpoOuLinksFromAd)
+    } catch {
+      $adErr = ''
+      if ($_.Exception -and $_.Exception.Message) { $adErr = $_.Exception.Message } else { $adErr = ($_ | Out-String) }
+      if ($needsOuLinks) {
+        throw "SearchOuNameFilter requires RSAT (Active Directory PowerShell module) and rights to read OU gpLink data.`r`n`r`n$adErr"
+      }
+      Write-Warning "Could not load GPO-to-OU links; LinkedOUs column will be empty. $adErr"
     }
-    Write-Warning "Could not load GPO-to-OU links; LinkedOUs column will be empty. $adErr"
+  } elseif ($needsOuLinks) {
+    throw (Get-ActiveDirectoryRsatInstallHint)
   }
 
   $gpoGuidToFriendlyOus = @{}
@@ -2171,7 +2184,6 @@ function Get-GpoRegistryRows {
     [Parameter(Mandatory)][object]$Gpo
   )
 
-  Ensure-GpoAuditAdContextInitialized
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $xmlText = Get-GPOReport @gpoDom -Guid $Gpo.Id -ReportType Xml -ErrorAction Stop
   [xml]$doc = $xmlText
@@ -2300,7 +2312,6 @@ function Invoke-RegistrySnapshotExport {
 
   Ensure-Folder -Path $Folder
 
-  Ensure-GpoAuditAdContextInitialized
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $allGpos = Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName
   $gpos = Select-Gpos -Gpos $allGpos -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
@@ -2430,19 +2441,7 @@ if (-not $Mode -and $PSBoundParameters.ContainsKey('SearchText')) {
   $Mode = 'SearchSettings'
 }
 
-$modesNeedingAdDomain = @(
-  'XmlExport',
-  'XmlExportAndFlatten',
-  'RegistrySnapshotExport',
-  'SearchSettings'
-)
-if ($Mode -and ($Mode -in $modesNeedingAdDomain)) {
-  try {
-    Initialize-GpoAuditAdContext -DomainDnsName $DomainDnsName
-  } catch {
-    Write-FatalError "Could not connect to Active Directory for the selected domain. Use -DomainDnsName or join this PC to a domain.`r`n`r`n$($_.Exception.Message)"
-  }
-}
+Set-GpoAuditRequestedDomain -DomainDnsName $DomainDnsName
 
 switch ($Mode) {
   'XmlExport' {
