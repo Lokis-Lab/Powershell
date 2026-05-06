@@ -40,7 +40,7 @@ function Fetch-CVERecords {
     try {
         return Invoke-RestMethod -Uri $BASE_URL -Headers $Headers -Method Get -Body $Params
     } catch {
-        Write-Warning "Error fetching data at index $StartIndex: $($_.Exception.Message)"
+        Write-Warning "Error fetching data at index ${StartIndex}: $($_.Exception.Message)"
         return $null
     }
 }
@@ -57,13 +57,31 @@ function Store-CVEInCSV {
     }
 
     $csvIndex = 1
-    $currentCsvPath = Join-Path $CsvFolder "cve_repository_$csvIndex.csv"
+    $currentCsvPath = $null
     $recordCount = 0
 
-    if (Test-Path -Path $currentCsvPath) {
-        $recordCount = (Import-Csv -Path $currentCsvPath).Count
-    } else {
-        "id,published_date" | Out-File -FilePath $currentCsvPath -Encoding utf8
+    function Get-CsvRecordCount {
+        param([Parameter(Mandatory=$true)][string]$Path)
+        $rows = Import-Csv -Path $Path
+        if ($null -eq $rows) { return 0 }
+        return @($rows).Count
+    }
+
+    while ($true) {
+        $currentCsvPath = Join-Path $CsvFolder "cve_repository_$csvIndex.csv"
+
+        if (-not (Test-Path -Path $currentCsvPath)) {
+            "id,published_date" | Out-File -FilePath $currentCsvPath -Encoding utf8
+            $recordCount = 0
+            break
+        }
+
+        $recordCount = Get-CsvRecordCount -Path $currentCsvPath
+        if ($recordCount -lt 1000000) {
+            break
+        }
+
+        $csvIndex++
     }
 
     foreach ($cve in $CVERecords.vulnerabilities) {
@@ -72,10 +90,16 @@ function Store-CVEInCSV {
 
         if ([datetime]$publishedDate -gt [datetime]"2005-12-31") {
             if ($recordCount -ge 1000000) {
-                $csvIndex++
-                $currentCsvPath = Join-Path $CsvFolder "cve_repository_$csvIndex.csv"
-                "id,published_date" | Out-File -FilePath $currentCsvPath -Encoding utf8
-                $recordCount = 0
+                do {
+                    $csvIndex++
+                    $currentCsvPath = Join-Path $CsvFolder "cve_repository_$csvIndex.csv"
+                    if (-not (Test-Path -Path $currentCsvPath)) {
+                        "id,published_date" | Out-File -FilePath $currentCsvPath -Encoding utf8
+                        $recordCount = 0
+                    } else {
+                        $recordCount = Get-CsvRecordCount -Path $currentCsvPath
+                    }
+                } while ($recordCount -ge 1000000)
             }
 
             "$cveId,$publishedDate" | Add-Content -Path $currentCsvPath
