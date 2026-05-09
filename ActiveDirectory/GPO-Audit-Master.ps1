@@ -2417,6 +2417,7 @@ function Invoke-RegistrySnapshotCompare {
       GpoId     = $r.GpoId
       Scope     = $r.Scope
       KeyPath   = $r.KeyPath
+      ValueName = $r.ValueName
       OldType   = $l.ValueType
       OldValue  = $l.ValueData
       NewType   = $r.ValueType
