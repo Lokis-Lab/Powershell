@@ -1,7 +1,6 @@
-$scriptPath = Join-Path $PSScriptRoot 'GPO-Audit-Master.ps1'
-
 Describe 'GPO-Audit-Master lazy AD dependency handling' {
   BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot 'GPO-Audit-Master.ps1'
     $tokens = $null
     $parseErrors = $null
     $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile(
