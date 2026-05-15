@@ -1524,7 +1524,6 @@ function Show-GpoCompareDialog {
 
   $gpos = @()
   try {
-    Ensure-GpoAuditAdContextInitialized
     $gpoDom = Get-GpoAuditGpoDomainSplat
     $gpos = Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName | ForEach-Object { $_.DisplayName }
   } catch {
@@ -2503,6 +2502,7 @@ function Invoke-RegistrySnapshotCompare {
 
 # -------- GUI mode (when no -Mode is passed) --------
 if (-not $PSBoundParameters.ContainsKey('Mode')) {
+  Set-GpoAuditRequestedDomain -DomainDnsName $DomainDnsName
   Show-GpoAuditMasterMainGui -DefaultOutDir $OutDir -DefaultThrottle $Throttle -InitialDomainDnsName $DomainDnsName
   return
 }
