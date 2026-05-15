@@ -145,8 +145,79 @@ trap {
   Write-FatalError $msg
 }
 
-try { Import-Module GroupPolicy -ErrorAction Stop } catch {
-  Write-FatalError "The GroupPolicy module is required (install RSAT: Group Policy Management).`r`n`r`n$($_.Exception.Message)"
+function Get-GroupPolicyRsatInstallHint {
+  $capHint = ''
+  try {
+    if (Get-Command Get-WindowsCapability -ErrorAction SilentlyContinue) {
+      $cap = Get-WindowsCapability -Online -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'Rsat.GroupPolicy.Management.Tools*' } |
+        Select-Object -First 1
+      if ($cap -and $cap.State -ne 'Installed') {
+        $capHint = "`r`n`r`nOptional feature status: $($cap.Name) = $($cap.State). Install it, then restart PowerShell."
+      }
+    }
+  } catch { }
+  @"
+The Group Policy PowerShell module (RSAT) is not available on this computer.
+
+Install on Windows 10/11 (client):
+  Settings > Apps > Optional features > Add an optional feature (or View features)
+  Search for: Group Policy Management Tools
+  Or run in an elevated PowerShell:
+  Add-WindowsCapability -Online -Name Rsat.GroupPolicy.Management.Tools~~~~0.0.1.0
+
+Install on Windows Server:
+  Server Manager > Add Roles and Features > Features > Remote Server Administration Tools >
+  Feature Administration Tools > Group Policy Management Tools
+
+After installing, close all PowerShell windows and try again.
+$capHint
+"@
+}
+
+function Import-GroupPolicyModule {
+  [CmdletBinding()]
+  param()
+  if (Get-Module -Name GroupPolicy -ErrorAction SilentlyContinue) { return }
+
+  $lastErr = $null
+  # PS 7 defaults to WinPSCompatSession remoting, which can fail with "runspace state is not valid".
+  $attempts = if ($PSVersionTable.PSVersion.Major -ge 7) {
+    @(@{ SkipEditionCheck = $true }, @{})
+  } else {
+    @(@{})
+  }
+
+  foreach ($extra in $attempts) {
+    try {
+      Import-Module -Name GroupPolicy -ErrorAction Stop @extra
+      return
+    } catch {
+      $lastErr = $_
+    }
+  }
+
+  $ps7Hint = ''
+  if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $pathHint = if ($PSCommandPath) { $PSCommandPath } else { '.\GPO-Audit-Master.ps1' }
+    $ps7Hint = @"
+
+PowerShell 7 could not load Group Policy via the Windows PowerShell compatibility session.
+Try running with Windows PowerShell 5.1:
+  powershell.exe -NoProfile -File "$pathHint"
+"@
+  }
+
+  $msg = if ($lastErr.Exception.Message -match 'runspace state is not valid|Failure from remote command') {
+    "$(Get-GroupPolicyRsatInstallHint)$ps7Hint"
+  } else {
+    Get-GroupPolicyRsatInstallHint
+  }
+  throw "$msg`r`n`r`nImport-Module failed: $($lastErr.Exception.Message)"
+}
+
+try { Import-GroupPolicyModule } catch {
+  Write-FatalError $_.Exception.Message
 }
 
 function Get-ActiveDirectoryRsatInstallHint {
@@ -687,7 +758,7 @@ function Get-AdDnString {
   <#
   .SYNOPSIS
     Normalized distinguishedName string for hashtable keys (AD sometimes returns ADPropertyValueCollection).
-    Strings implement IEnumerable — must test [string] before IEnumerable or only the first character is used.
+    Strings implement IEnumerable ΓÇö must test [string] before IEnumerable or only the first character is used.
   #>
   param($ObjectWithDn)
   if ($null -eq $ObjectWithDn) { return '' }
@@ -1466,7 +1537,7 @@ function Show-GpoCompareDialog {
   }
 
   $form = New-Object System.Windows.Forms.Form
-  $form.Text = "GPO Compare – Export, Flatten & Diff Two GPOs"
+  $form.Text = "GPO Compare ΓÇô Export, Flatten & Diff Two GPOs"
   $form.Size = New-Object System.Drawing.Size(540, 420)
   $form.StartPosition = "CenterScreen"
   $form.FormBorderStyle = "FixedDialog"
@@ -1558,7 +1629,7 @@ function Show-GpoCompareDialog {
   $lblDiff = New-Object System.Windows.Forms.Label
   $lblDiff.Location = New-Object System.Drawing.Point -ArgumentList 16, $y
   $lblDiff.Size = New-Object System.Drawing.Size(400, 20)
-  $lblDiff.Text = "Diff CSV path (optional – default: Diffs\Diff_ByGPO_<timestamp>.csv):"
+  $lblDiff.Text = "Diff CSV path (optional ΓÇô default: Diffs\Diff_ByGPO_<timestamp>.csv):"
   $form.Controls.Add($lblDiff)
   $y += 22
   $tbDiff = New-Object System.Windows.Forms.TextBox
@@ -2168,7 +2239,7 @@ function Show-GpoAuditMasterMainGui {
         }
       }
     } catch {
-      [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "GPO Audit Master – Error", "OK", "Error")
+      [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "GPO Audit Master ΓÇô Error", "OK", "Error")
       $statusLabel.Text = "Error"
     }
   })
