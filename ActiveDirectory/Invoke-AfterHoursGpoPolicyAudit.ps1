@@ -154,9 +154,21 @@ function Get-SafeFileName {
 
 function Get-ParentDn {
   param([Parameter(Mandatory)][string]$DistinguishedName)
-  $parts = $DistinguishedName -split ','
-  if ($parts.Count -le 1) { return $null }
-  return ($parts[1..($parts.Count - 1)] -join ',')
+  for ($i = 0; $i -lt $DistinguishedName.Length; $i++) {
+    if ($DistinguishedName[$i] -ne ',') { continue }
+
+    $escapeCount = 0
+    for ($j = $i - 1; $j -ge 0 -and $DistinguishedName[$j] -eq [char]'\'; $j--) {
+      $escapeCount++
+    }
+
+    if (($escapeCount % 2) -eq 0) {
+      if ($i -ge ($DistinguishedName.Length - 1)) { return $null }
+      return $DistinguishedName.Substring($i + 1)
+    }
+  }
+
+  return $null
 }
 
 function Test-AfterHoursWindow {
@@ -284,7 +296,16 @@ function Expand-ZipIfNeeded {
   )
   Ensure-Directory -Path $DestinationFolder
   $marker = Join-Path -Path $DestinationFolder -ChildPath '.expanded.marker'
-  if (-not (Test-Path -LiteralPath $marker)) {
+  $shouldExpand = -not (Test-Path -LiteralPath $marker)
+
+  if (-not $shouldExpand) {
+    $zipUtc = (Get-Item -LiteralPath $ZipPath).LastWriteTimeUtc
+    $markerUtc = (Get-Item -LiteralPath $marker).LastWriteTimeUtc
+    $shouldExpand = $zipUtc -gt $markerUtc
+  }
+
+  if ($shouldExpand) {
+    Get-ChildItem -LiteralPath $DestinationFolder -Force | Remove-Item -Recurse -Force
     Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
     Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
   }
@@ -1023,7 +1044,7 @@ function Export-GpoBackupBundle {
       }
       Write-Host "Backed up GPO: $gpoId" -ForegroundColor Green
     } catch {
-      Write-Warning "Backup-GPO failed for $gpoId: $($_.Exception.Message)"
+      Write-Warning "Backup-GPO failed for ${gpoId}: $($_.Exception.Message)"
     }
   }
 
@@ -1072,11 +1093,15 @@ foreach ($row in $plan) {
     continue
   }
   try {
-    $enforced = $false
-    if ($row.Enforced) {
-      [void][bool]::TryParse([string]$row.Enforced, [ref]$enforced)
+    $enforced = 'No'
+    if ($row.Enforced -match '^(?i:true|yes|1)$') {
+      $enforced = 'Yes'
     }
-    New-GPLink -Name $row.GpoName -Target $row.ContainerDn -Enforced:$enforced -ErrorAction SilentlyContinue | Out-Null
+    $linkEnabled = 'Yes'
+    if ($row.Enabled -match '^(?i:false|no|0)$') {
+      $linkEnabled = 'No'
+    }
+    New-GPLink -Name $row.GpoName -Target $row.ContainerDn -Enforced $enforced -LinkEnabled $linkEnabled -ErrorAction SilentlyContinue | Out-Null
   } catch {
     Write-Warning "New-GPLink failed for $($row.GpoName) -> $($row.ContainerDn): $($_.Exception.Message)"
   }
@@ -1224,8 +1249,11 @@ foreach ($gpoId in $uniqueScopedGpoIds) {
   }
   $xmlPath = $snapshot.ReportMap[$gpoId]
   $domainRows = Get-GpoRowsFromReportXml -XmlPath $xmlPath -Source 'Domain' -TemplatePackage 'Domain'
-  $gpoName = ($scopedLinks | Where-Object { $_.GpoId -eq $gpoId } | Select-Object -First 1).GpoName
-  $gpoDiffs = Compare-MasterToGpoRows -MasterRows $masterRows -DomainRows $domainRows -ContainerDn $TargetContainerDn -GpoName $gpoName -GpoId $gpoId
+  $gpoLinks = @($scopedLinks | Where-Object { $_.GpoId -eq $gpoId })
+  $gpoName = ($gpoLinks | Select-Object -First 1).GpoName
+  $containerDn = (($gpoLinks | Select-Object -ExpandProperty ContainerDn -Unique) -join ';')
+  if ([string]::IsNullOrWhiteSpace($containerDn)) { $containerDn = $TargetContainerDn }
+  $gpoDiffs = Compare-MasterToGpoRows -MasterRows $masterRows -DomainRows $domainRows -ContainerDn $containerDn -GpoName $gpoName -GpoId $gpoId
   foreach ($d in $gpoDiffs) { [void]$diffRows.Add($d) }
 }
 
