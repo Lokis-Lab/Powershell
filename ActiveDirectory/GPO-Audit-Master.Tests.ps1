@@ -102,3 +102,63 @@ Describe 'AD-GPO-Audit-Master combined GUI option binding' {
     $memberNames | Should -Not -Contain 'OuFilterTb'
   }
 }
+
+Describe 'Invoke-AfterHoursGpoPolicyAudit correctness guards' {
+  BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1'
+    $script:AfterHoursText = Get-Content -LiteralPath $scriptPath -Raw
+    $tokens = $null
+    $parseErrors = $null
+    $script:AfterHoursAst = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+      throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+  }
+
+  It 'parses DN parents without splitting escaped commas inside OU names' {
+    $functionAst = $script:AfterHoursAst.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-ParentDn'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    Invoke-Expression $functionAst.Extent.Text
+
+    Get-ParentDn -DistinguishedName 'OU=Child,OU=Legal\, Corp,DC=contoso,DC=com' |
+      Should -Be 'OU=Legal\, Corp,DC=contoso,DC=com'
+    Get-ParentDn -DistinguishedName 'OU=Legal\, Corp,OU=Parent,DC=contoso,DC=com' |
+      Should -Be 'OU=Parent,DC=contoso,DC=com'
+  }
+
+  It 're-expands template ZIPs when the downloaded archive is newer than the marker' {
+    $functionAst = $script:AfterHoursAst.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Expand-ZipIfNeeded'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionText = $functionAst.Extent.Text
+    $functionText | Should -Match 'LastWriteTimeUtc'
+    $functionText | Should -Match '\$zipUtc\s+-gt\s+\$markerUtc'
+    $functionText | Should -Match 'Remove-Item\s+-Recurse\s+-Force'
+  }
+
+  It 'preserves disabled GPO links in the generated import helper' {
+    $script:AfterHoursText | Should -Match '\$row\.Enabled'
+    $script:AfterHoursText | Should -Match '\$linkEnabled\s*=\s*''No'''
+    $script:AfterHoursText | Should -Match 'New-GPLink[^\r\n]+-LinkEnabled\s+\$linkEnabled'
+  }
+
+  It 'attributes diff rows to scoped link containers instead of the target root' {
+    $script:AfterHoursText | Should -Match '\$gpoLinks\s*=\s*@\(\$scopedLinks'
+    $script:AfterHoursText | Should -Match '\$containerDn\s*='
+    $script:AfterHoursText | Should -Not -Match 'Compare-MasterToGpoRows[^\r\n]+-ContainerDn\s+\$TargetContainerDn'
+  }
+}
