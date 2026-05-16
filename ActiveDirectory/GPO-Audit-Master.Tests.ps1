@@ -61,3 +61,44 @@ Describe 'GPO-Audit-Master lazy AD dependency handling' {
     $commandNames | Should -Not -Contain 'Ensure-GpoAuditAdContextInitialized'
   }
 }
+
+Describe 'AD-GPO-Audit-Master combined GUI option binding' {
+  BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot 'AD-GPO-Audit-Master.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $script:CombinedAst = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+      throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+  }
+
+  It 'uses the AD OU filter combo box state when running duplicate audits' {
+    $functionAst = $script:CombinedAst.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Show-AdGpoAuditMasterMainGui'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+
+    $memberNames = @(
+      $functionAst.Body.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.MemberExpressionAst]
+      }, $true) | ForEach-Object {
+        if ($_.Member -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+          $_.Member.Value
+        }
+      } | Where-Object { $_ }
+    )
+
+    $memberNames | Should -Contain 'OuFilterCb'
+    $memberNames | Should -Not -Contain 'OuFilterTb'
+  }
+}
