@@ -468,7 +468,7 @@ function Get-AdAuditGroupInventory {
   $props = @(
     'DisplayName', 'mail', 'proxyAddresses', 'SamAccountName',
     'GroupCategory', 'GroupScope', 'DistinguishedName', 'objectGUID',
-    'CanonicalName', 'Enabled'
+    'CanonicalName'
   )
   $plan = Get-AdAuditInventorySearchPlan -SearchBaseDn $SearchBaseDn `
     -SearchOuNameFilter $SearchOuNameFilter -SearchOuIncludeChildren:$SearchOuIncludeChildren
