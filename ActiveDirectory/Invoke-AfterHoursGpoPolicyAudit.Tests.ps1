@@ -1,6 +1,18 @@
 Describe 'Invoke-AfterHoursGpoPolicyAudit generated import helper' {
   BeforeAll {
     $scriptPath = Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $script:ScriptAst = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+      throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+
     $source = Get-Content -LiteralPath $scriptPath -Raw
     $match = [regex]::Match(
       $source,
@@ -27,6 +39,7 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit generated import helper' {
   }
 
   It 'emits a syntactically valid helper script' {
+    $script:ScriptAst | Should -Not -BeNullOrEmpty
     $script:HelperAst | Should -Not -BeNullOrEmpty
   }
 
