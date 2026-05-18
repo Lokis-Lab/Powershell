@@ -1059,6 +1059,21 @@ param(
 Import-Module GroupPolicy -ErrorAction Stop
 $plan = Import-Csv -LiteralPath $LinkPlanCsv
 
+function ConvertTo-GpLinkOption {
+  param(
+    [Parameter()][string]$Value,
+    [Parameter(Mandatory=$true)][ValidateSet('Yes','No')][string]$Default
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) { return $Default }
+
+  switch -Regex ($Value.Trim()) {
+    '^(True|Yes|Enabled|1)$' { return 'Yes' }
+    '^(False|No|Disabled|0)$' { return 'No' }
+    default { return $Default }
+  }
+}
+
 foreach ($row in $plan) {
   if ([string]::IsNullOrWhiteSpace($row.GpoName) -or [string]::IsNullOrWhiteSpace($row.ContainerDn)) { continue }
   if ([string]::IsNullOrWhiteSpace($row.BackupId)) {
@@ -1072,13 +1087,32 @@ foreach ($row in $plan) {
     continue
   }
   try {
-    $enforced = $false
-    if ($row.Enforced) {
-      [void][bool]::TryParse([string]$row.Enforced, [ref]$enforced)
+    $linkEnabled = ConvertTo-GpLinkOption -Value ([string]$row.Enabled) -Default 'Yes'
+    $enforced = ConvertTo-GpLinkOption -Value ([string]$row.Enforced) -Default 'No'
+    $order = 0
+    $hasOrder = [int]::TryParse([string]$row.Order, [ref]$order)
+
+    $existingLink = $null
+    try {
+      $existingLink = Get-GPInheritance -Target $row.ContainerDn -ErrorAction Stop |
+        Select-Object -ExpandProperty GpoLinks |
+        Where-Object { $_.DisplayName -eq $row.GpoName } |
+        Select-Object -First 1
+    } catch {
+      $existingLink = $null
     }
-    New-GPLink -Name $row.GpoName -Target $row.ContainerDn -Enforced:$enforced -ErrorAction SilentlyContinue | Out-Null
+
+    if (-not $existingLink) {
+      New-GPLink -Name $row.GpoName -Target $row.ContainerDn -LinkEnabled $linkEnabled -Enforced $enforced -ErrorAction Stop | Out-Null
+    } else {
+      Set-GPLink -Name $row.GpoName -Target $row.ContainerDn -LinkEnabled $linkEnabled -Enforced $enforced -ErrorAction Stop | Out-Null
+    }
+
+    if ($hasOrder -and $order -gt 0) {
+      Set-GPLink -Name $row.GpoName -Target $row.ContainerDn -Order $order -ErrorAction Stop | Out-Null
+    }
   } catch {
-    Write-Warning "New-GPLink failed for $($row.GpoName) -> $($row.ContainerDn): $($_.Exception.Message)"
+    Write-Warning "Failed to restore link for $($row.GpoName) -> $($row.ContainerDn): $($_.Exception.Message)"
   }
 }
 '@ | Set-Content -LiteralPath $helperScriptPath -Encoding UTF8
