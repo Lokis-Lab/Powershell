@@ -4,7 +4,7 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit generated import helper' {
     $source = Get-Content -LiteralPath $scriptPath -Raw
     $match = [regex]::Match(
       $source,
-      "(?s)@'\r?\n(?<helper>param\([\s\S]*?)\r?\n'@ \| Set-Content -LiteralPath \$helperScriptPath"
+      '(?s)@''\r?\n(?<helper>param\([\s\S]*?)\r?\n''@ \| Set-Content -LiteralPath \$helperScriptPath'
     )
 
     if (-not $match.Success) {
