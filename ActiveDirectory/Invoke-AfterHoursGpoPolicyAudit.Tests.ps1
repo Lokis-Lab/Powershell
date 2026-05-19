@@ -65,9 +65,9 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit safety checks' {
   }
 
   It 'generates a GPO import helper that preserves link state and order' {
-    $script:ScriptText | Should -Match "LinkEnabled\s*=\s*\$linkEnabledText"
-    $script:ScriptText | Should -Match "Enforced\s*=\s*\$enforcedText"
-    $script:ScriptText | Should -Match "\$linkParams\['Order'\]\s*=\s*\$linkOrder"
+    $script:ScriptText | Should -Match 'LinkEnabled\s*=\s*\$linkEnabledText'
+    $script:ScriptText | Should -Match 'Enforced\s*=\s*\$enforcedText'
+    $script:ScriptText | Should -Match "\`$linkParams\['Order'\]\s*=\s*\`$linkOrder"
     $script:ScriptText | Should -Match "New-GPLink\s+@linkParams"
     $script:ScriptText | Should -Not -Match "New-GPLink[^\r\n]+SilentlyContinue"
   }
