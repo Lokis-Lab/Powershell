@@ -1045,7 +1045,7 @@ function Export-GpoBackupBundle {
       }
       Write-Host "Backed up GPO: $gpoId" -ForegroundColor Green
     } catch {
-      Write-Warning "Backup-GPO failed for $gpoId: $($_.Exception.Message)"
+      Write-Warning "Backup-GPO failed for ${gpoId}: $($_.Exception.Message)"
     }
   }
 
