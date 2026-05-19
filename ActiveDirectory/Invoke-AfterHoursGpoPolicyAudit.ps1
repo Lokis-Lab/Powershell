@@ -284,9 +284,31 @@ function Expand-ZipIfNeeded {
   )
   Ensure-Directory -Path $DestinationFolder
   $marker = Join-Path -Path $DestinationFolder -ChildPath '.expanded.marker'
-  if (-not (Test-Path -LiteralPath $marker)) {
+  $zipItem = Get-Item -LiteralPath $ZipPath -ErrorAction Stop
+  $zipHash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256 -ErrorAction Stop).Hash
+  $needsExpand = $true
+
+  if (Test-Path -LiteralPath $marker) {
+    try {
+      $previous = Get-Content -LiteralPath $marker -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+      if ($previous.ZipHash -eq $zipHash -and $previous.ZipLength -eq $zipItem.Length) {
+        $needsExpand = $false
+      }
+    } catch {
+      $needsExpand = $true
+    }
+  }
+
+  if ($needsExpand) {
+    Get-ChildItem -LiteralPath $DestinationFolder -Force | Remove-Item -Recurse -Force
     Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
-    Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
+    [pscustomobject]@{
+      ExpandedAtUtc       = (Get-Date).ToUniversalTime().ToString('o')
+      ZipPath             = $zipItem.FullName
+      ZipHash             = $zipHash
+      ZipLength           = $zipItem.Length
+      ZipLastWriteTimeUtc = $zipItem.LastWriteTimeUtc.ToString('o')
+    } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $marker -Encoding UTF8
   }
 }
 
@@ -1076,7 +1098,24 @@ foreach ($row in $plan) {
     if ($row.Enforced) {
       [void][bool]::TryParse([string]$row.Enforced, [ref]$enforced)
     }
-    New-GPLink -Name $row.GpoName -Target $row.ContainerDn -Enforced:$enforced -ErrorAction SilentlyContinue | Out-Null
+    $linkEnabled = $true
+    if (-not [string]::IsNullOrWhiteSpace($row.Enabled)) {
+      [void][bool]::TryParse([string]$row.Enabled, [ref]$linkEnabled)
+    }
+    $linkEnabledText = if ($linkEnabled) { 'Yes' } else { 'No' }
+    $enforcedText = if ($enforced) { 'Yes' } else { 'No' }
+    $linkParams = @{
+      Name        = $row.GpoName
+      Target      = $row.ContainerDn
+      LinkEnabled = $linkEnabledText
+      Enforced    = $enforcedText
+      ErrorAction = 'Stop'
+    }
+    $linkOrder = 0
+    if ([int]::TryParse([string]$row.Order, [ref]$linkOrder) -and $linkOrder -gt 0) {
+      $linkParams['Order'] = $linkOrder
+    }
+    New-GPLink @linkParams | Out-Null
   } catch {
     Write-Warning "New-GPLink failed for $($row.GpoName) -> $($row.ContainerDn): $($_.Exception.Message)"
   }
