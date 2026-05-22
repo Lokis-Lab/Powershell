@@ -28,14 +28,14 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit safety checks' {
     $functionAst | Should -Not -BeNullOrEmpty
 
     $functionText = $functionAst.Extent.Text
-    $functionText | Should -Match 'Clear-DirectoryContents -Path \$DestinationFolder'
+    $functionText | Should -Match 'Clear-DirectoryContent -Path \$DestinationFolder'
     $functionText | Should -Match '\$markerItem\.LastWriteTimeUtc -lt \$zipItem\.LastWriteTimeUtc'
     $functionText | Should -Match '\.LastWriteTimeUtc = \$zipItem\.LastWriteTimeUtc'
   }
 
   It 'removes old expanded template packages before syncing current selections' {
-    $script:ScriptText | Should -Match 'Clear-DirectoryContents -Path \$microsoftExpandedFolder'
-    $script:ScriptText | Should -Match 'Clear-DirectoryContents -Path \$nistExpandedFolder'
+    $script:ScriptText | Should -Match 'Clear-DirectoryContent -Path \$microsoftExpandedFolder'
+    $script:ScriptText | Should -Match 'Clear-DirectoryContent -Path \$nistExpandedFolder'
   }
 
   It 'tracks failed GPO report exports in the domain snapshot' {

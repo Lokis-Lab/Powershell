@@ -130,7 +130,7 @@ function Ensure-Directory {
   }
 }
 
-function Clear-DirectoryContents {
+function Clear-DirectoryContent {
   param([Parameter(Mandatory)][string]$Path)
   Ensure-Directory -Path $Path
   Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue |
@@ -299,7 +299,7 @@ function Expand-ZipIfNeeded {
   }
 
   if ($shouldExpand) {
-    Clear-DirectoryContents -Path $DestinationFolder
+    Clear-DirectoryContent -Path $DestinationFolder
     Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
     Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
     (Get-Item -LiteralPath $marker).LastWriteTimeUtc = $zipItem.LastWriteTimeUtc
@@ -1164,8 +1164,8 @@ foreach ($path in @(
 if (-not $SkipTemplateDownload) {
   Write-Stage "Syncing Microsoft templates"
   # Keep expanded template folders aligned to this run's selected downloads.
-  Clear-DirectoryContents -Path $microsoftExpandedFolder
-  Clear-DirectoryContents -Path $nistExpandedFolder
+  Clear-DirectoryContent -Path $microsoftExpandedFolder
+  Clear-DirectoryContent -Path $nistExpandedFolder
 
   $msFiles = Get-MicrosoftSctFileList -PageUrl $MicrosoftDownloadPageUrl -FileNameRegex $MicrosoftFileNameRegex
   foreach ($file in $msFiles) {
