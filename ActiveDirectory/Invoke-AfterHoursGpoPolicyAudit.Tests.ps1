@@ -1,3 +1,12 @@
+function Get-AfterHoursTestFunctionAst {
+  param([Parameter(Mandatory)][string]$Name)
+  $script:Ast.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+      $node.Name -eq $Name
+  }, $true)
+}
+
 Describe 'Invoke-AfterHoursGpoPolicyAudit safety checks' {
   BeforeAll {
     $scriptPath = Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1'
@@ -15,21 +24,12 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit safety checks' {
     }
   }
 
-  function Get-TestFunctionAst {
-    param([Parameter(Mandatory)][string]$Name)
-    $script:Ast.Find({
-      param($node)
-      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-        $node.Name -eq $Name
-    }, $true)
-  }
-
   It 'parses successfully' {
     $script:Ast | Should -Not -BeNullOrEmpty
   }
 
   It 'clears and re-expands stale template ZIP extractions' {
-    $functionAst = Get-TestFunctionAst -Name 'Expand-ZipIfNeeded'
+    $functionAst = Get-AfterHoursTestFunctionAst -Name 'Expand-ZipIfNeeded'
     $functionAst | Should -Not -BeNullOrEmpty
 
     $functionText = $functionAst.Extent.Text
@@ -44,7 +44,7 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit safety checks' {
   }
 
   It 'tracks failed GPO report exports in the domain snapshot' {
-    $functionAst = Get-TestFunctionAst -Name 'Export-DomainHierarchySnapshot'
+    $functionAst = Get-AfterHoursTestFunctionAst -Name 'Export-DomainHierarchySnapshot'
     $functionAst | Should -Not -BeNullOrEmpty
 
     $functionText = $functionAst.Extent.Text
