@@ -130,6 +130,13 @@ function Ensure-Directory {
   }
 }
 
+function Clear-DirectoryContents {
+  param([Parameter(Mandatory)][string]$Path)
+  Ensure-Directory -Path $Path
+  Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue |
+    Remove-Item -Recurse -Force -ErrorAction Stop
+}
+
 function Ensure-ModuleAvailable {
   param([Parameter(Mandatory)][string]$Name)
   if (-not (Get-Module -ListAvailable -Name $Name)) {
@@ -283,10 +290,19 @@ function Expand-ZipIfNeeded {
     [Parameter(Mandatory)][string]$DestinationFolder
   )
   Ensure-Directory -Path $DestinationFolder
+  $zipItem = Get-Item -LiteralPath $ZipPath -ErrorAction Stop
   $marker = Join-Path -Path $DestinationFolder -ChildPath '.expanded.marker'
-  if (-not (Test-Path -LiteralPath $marker)) {
+  $shouldExpand = $true
+  if (Test-Path -LiteralPath $marker) {
+    $markerItem = Get-Item -LiteralPath $marker -ErrorAction Stop
+    $shouldExpand = ($markerItem.LastWriteTimeUtc -lt $zipItem.LastWriteTimeUtc)
+  }
+
+  if ($shouldExpand) {
+    Clear-DirectoryContents -Path $DestinationFolder
     Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
     Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
+    (Get-Item -LiteralPath $marker).LastWriteTimeUtc = $zipItem.LastWriteTimeUtc
   }
 }
 
@@ -778,6 +794,7 @@ function Export-DomainHierarchySnapshot {
   Ensure-Directory -Path $reportsFolder
 
   $gpoReportMap = @{}
+  $gpoReportFailures = [System.Collections.Generic.List[object]]::new()
 
   $orderedNodes = $Nodes | Sort-Object @{ Expression = { ($_.CanonicalName -split '/').Count } }, CanonicalName
   foreach ($node in $orderedNodes) {
@@ -810,6 +827,13 @@ function Export-DomainHierarchySnapshot {
         $gpoReportMap[$link.GpoId] = $reportPath
       } catch {
         Write-Warning "Failed to export GPO report for '$($link.GpoName)' [$($link.GpoId)]: $($_.Exception.Message)"
+        $gpoReportFailures.Add([pscustomobject]@{
+          ContainerDn   = $node.DistinguishedName
+          ContainerPath = $node.CanonicalName
+          GpoName       = $link.GpoName
+          GpoId         = $link.GpoId
+          Error         = $_.Exception.Message
+        })
       }
     }
   }
@@ -830,8 +854,9 @@ function Export-DomainHierarchySnapshot {
   $allLinks | Export-Csv -Path (Join-Path -Path $OutputFolder -ChildPath 'All-GpoLinks.csv') -NoTypeInformation -Encoding UTF8
 
   return [pscustomobject]@{
-    ReportMap = $gpoReportMap
-    AllLinks  = @($allLinks)
+    ReportMap     = $gpoReportMap
+    FailedReports = @($gpoReportFailures)
+    AllLinks      = @($allLinks)
   }
 }
 
@@ -1023,7 +1048,7 @@ function Export-GpoBackupBundle {
       }
       Write-Host "Backed up GPO: $gpoId" -ForegroundColor Green
     } catch {
-      Write-Warning "Backup-GPO failed for $gpoId: $($_.Exception.Message)"
+      Write-Warning "Backup-GPO failed for ${gpoId}: $($_.Exception.Message)"
     }
   }
 
@@ -1053,10 +1078,16 @@ param(
   [string]$BackupFolder,
 
   [Parameter(Mandatory=$true)]
-  [string]$LinkPlanCsv
+  [string]$LinkPlanCsv,
+
+  [switch]$Apply
 )
 
 Import-Module GroupPolicy -ErrorAction Stop
+if (-not $Apply) {
+  throw "This helper imports GPO backups and creates links. Re-run with -Apply only after reviewing LinkPlan.csv and the target domain."
+}
+
 $plan = Import-Csv -LiteralPath $LinkPlanCsv
 
 foreach ($row in $plan) {
@@ -1076,7 +1107,7 @@ foreach ($row in $plan) {
     if ($row.Enforced) {
       [void][bool]::TryParse([string]$row.Enforced, [ref]$enforced)
     }
-    New-GPLink -Name $row.GpoName -Target $row.ContainerDn -Enforced:$enforced -ErrorAction SilentlyContinue | Out-Null
+    New-GPLink -Name $row.GpoName -Target $row.ContainerDn -Enforced:$enforced -ErrorAction Stop | Out-Null
   } catch {
     Write-Warning "New-GPLink failed for $($row.GpoName) -> $($row.ContainerDn): $($_.Exception.Message)"
   }
@@ -1132,6 +1163,10 @@ foreach ($path in @(
 
 if (-not $SkipTemplateDownload) {
   Write-Stage "Syncing Microsoft templates"
+  # Keep expanded template folders aligned to this run's selected downloads.
+  Clear-DirectoryContents -Path $microsoftExpandedFolder
+  Clear-DirectoryContents -Path $nistExpandedFolder
+
   $msFiles = Get-MicrosoftSctFileList -PageUrl $MicrosoftDownloadPageUrl -FileNameRegex $MicrosoftFileNameRegex
   foreach ($file in $msFiles) {
     $safeName = Get-SafeFileName -Name $file.Name
@@ -1204,6 +1239,11 @@ if (-not $targetNode) {
 }
 
 $snapshot = Export-DomainHierarchySnapshot -Nodes $nodes -OutputFolder $domainSnapshotFolder
+if ($snapshot.FailedReports.Count -gt 0) {
+  $failedReportPath = Join-Path -Path $domainSnapshotFolder -ChildPath 'Failed-GpoReports.csv'
+  $snapshot.FailedReports | Export-Csv -Path $failedReportPath -NoTypeInformation -Encoding UTF8
+  Write-Warning "One or more GPO reports failed to export. Details written to: $failedReportPath"
+}
 
 Write-Stage "Selecting target container and descendants for comparison"
 $targetDns = Get-DescendantDns -Nodes $nodes -RootDn $TargetContainerDn
@@ -1214,6 +1254,26 @@ if ($scopedLinks.Count -eq 0) {
 
 $uniqueScopedGpoIds = @($scopedLinks | Where-Object { $_.GpoId } | Select-Object -ExpandProperty GpoId -Unique)
 Write-Host ("Scoped containers: {0}; Scoped GPOs: {1}" -f $targetDns.Count, $uniqueScopedGpoIds.Count) -ForegroundColor Green
+
+$missingScopedReports = @(
+  foreach ($gpoId in $uniqueScopedGpoIds) {
+    if (-not $snapshot.ReportMap.ContainsKey($gpoId)) {
+      $link = $scopedLinks | Where-Object { $_.GpoId -eq $gpoId } | Select-Object -First 1
+      $failure = $snapshot.FailedReports | Where-Object { $_.GpoId -eq $gpoId } | Select-Object -First 1
+      [pscustomobject]@{
+        GpoName     = $link.GpoName
+        GpoId       = $gpoId
+        ContainerDn = $link.ContainerDn
+        Error       = if ($failure) { $failure.Error } else { 'Report XML was not exported.' }
+      }
+    }
+  }
+)
+if ($missingScopedReports.Count -gt 0) {
+  $missingPath = Join-Path -Path $domainSnapshotFolder -ChildPath 'Missing-Scoped-GpoReports.csv'
+  $missingScopedReports | Export-Csv -Path $missingPath -NoTypeInformation -Encoding UTF8
+  throw "Failed to export report XML for $($missingScopedReports.Count) scoped GPO(s). Aborting instead of producing an incomplete audit. Details: $missingPath"
+}
 
 Write-Stage "Comparing master template against scoped GPOs"
 $diffRows = [System.Collections.Generic.List[object]]::new()
