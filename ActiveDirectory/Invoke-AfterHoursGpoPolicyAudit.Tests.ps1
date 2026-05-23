@@ -48,6 +48,7 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit template extraction cache' {
       Set-Content -LiteralPath (Join-Path $source 'baseline.txt') -Value 'new' -Encoding UTF8
       Compress-Archive -Path (Join-Path $source '*') -DestinationPath $zipPath -Force
 
+      New-Item -Path $marker -ItemType File -Force | Out-Null
       Set-Content -LiteralPath $marker -Value 'Expanded test marker' -Encoding UTF8
       (Get-Item -LiteralPath $marker).LastWriteTimeUtc = (Get-Item -LiteralPath $zipPath).LastWriteTimeUtc.AddMinutes(-5)
 
