@@ -285,7 +285,8 @@ function Expand-ZipIfNeeded {
   Ensure-Directory -Path $DestinationFolder
   $marker = Join-Path -Path $DestinationFolder -ChildPath '.expanded.marker'
   $zipUtc = (Get-Item -LiteralPath $ZipPath).LastWriteTimeUtc
-  $markerUtc = if (Test-Path -LiteralPath $marker) { (Get-Item -LiteralPath $marker).LastWriteTimeUtc } else { $null }
+  $markerItem = Get-Item -LiteralPath $marker -ErrorAction SilentlyContinue
+  $markerUtc = if ($markerItem) { $markerItem.LastWriteTimeUtc } else { $null }
 
   if ($null -eq $markerUtc -or $zipUtc -gt $markerUtc) {
     Get-ChildItem -LiteralPath $DestinationFolder -Force |
