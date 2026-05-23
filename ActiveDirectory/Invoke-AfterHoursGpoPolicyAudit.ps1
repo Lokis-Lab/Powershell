@@ -284,9 +284,14 @@ function Expand-ZipIfNeeded {
   )
   Ensure-Directory -Path $DestinationFolder
   $marker = Join-Path -Path $DestinationFolder -ChildPath '.expanded.marker'
-  if (-not (Test-Path -LiteralPath $marker)) {
+  $zipUtc = (Get-Item -LiteralPath $ZipPath).LastWriteTimeUtc
+  $markerUtc = if (Test-Path -LiteralPath $marker) { (Get-Item -LiteralPath $marker).LastWriteTimeUtc } else { $null }
+
+  if ($null -eq $markerUtc -or $zipUtc -gt $markerUtc) {
+    Get-ChildItem -LiteralPath $DestinationFolder -Force |
+      Remove-Item -Recurse -Force
     Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
-    Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
+    Set-Content -LiteralPath $marker -Value ("Expanded {0} from {1}" -f (Get-Date).ToString('o'), (Split-Path -Path $ZipPath -Leaf)) -Encoding UTF8
   }
 }
 
