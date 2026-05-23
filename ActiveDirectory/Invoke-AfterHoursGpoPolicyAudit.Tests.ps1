@@ -47,10 +47,7 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit template extraction cache' {
       New-Item -Path $source -ItemType Directory -Force | Out-Null
       Set-Content -LiteralPath (Join-Path $source 'baseline.txt') -Value 'new' -Encoding UTF8
       Compress-Archive -Path (Join-Path $source '*') -DestinationPath $zipPath -Force
-
-      New-Item -Path $marker -ItemType File -Force | Out-Null
-      Set-Content -LiteralPath $marker -Value 'Expanded test marker' -Encoding UTF8
-      (Get-Item -LiteralPath $marker).LastWriteTimeUtc = (Get-Item -LiteralPath $zipPath).LastWriteTimeUtc.AddMinutes(-5)
+      (Get-Item -LiteralPath $zipPath).LastWriteTimeUtc = [datetime]::UtcNow.AddMinutes(5)
 
       Expand-ZipIfNeeded -ZipPath $zipPath -DestinationFolder $destination
 
@@ -61,5 +58,18 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit template extraction cache' {
         Remove-Item -LiteralPath $root -Recurse -Force
       }
     }
+  }
+
+  It 'compares the archive timestamp against the expansion marker' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Expand-ZipIfNeeded'
+    }, $true)
+
+    $functionText = $functionAst.Extent.Text
+    $functionText | Should -Match '\$zipUtc'
+    $functionText | Should -Match '\$markerUtc'
+    $functionText | Should -Match '\$zipUtc\s+-gt\s+\$markerUtc'
   }
 }
