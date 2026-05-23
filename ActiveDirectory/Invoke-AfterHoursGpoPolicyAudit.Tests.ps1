@@ -30,6 +30,7 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit template extraction cache' {
     $source = Join-Path $root 'source'
     $destination = Join-Path $root 'expanded'
     $zipPath = Join-Path $root 'baseline.zip'
+    $marker = Join-Path $destination '.expanded.marker'
 
     try {
       New-Item -Path $source -ItemType Directory -Force | Out-Null
@@ -40,13 +41,14 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit template extraction cache' {
       Expand-ZipIfNeeded -ZipPath $zipPath -DestinationFolder $destination
       (Get-Content -LiteralPath (Join-Path $destination 'baseline.txt') -Raw).Trim() | Should -Be 'old'
       Test-Path -LiteralPath (Join-Path $destination 'removed.txt') | Should -BeTrue
+      Test-Path -LiteralPath $marker | Should -BeTrue
 
       Remove-Item -LiteralPath $source -Recurse -Force
       New-Item -Path $source -ItemType Directory -Force | Out-Null
       Set-Content -LiteralPath (Join-Path $source 'baseline.txt') -Value 'new' -Encoding UTF8
       Compress-Archive -Path (Join-Path $source '*') -DestinationPath $zipPath -Force
 
-      $marker = Join-Path $destination '.expanded.marker'
+      Set-Content -LiteralPath $marker -Value 'Expanded test marker' -Encoding UTF8
       (Get-Item -LiteralPath $marker).LastWriteTimeUtc = (Get-Item -LiteralPath $zipPath).LastWriteTimeUtc.AddMinutes(-5)
 
       Expand-ZipIfNeeded -ZipPath $zipPath -DestinationFolder $destination
