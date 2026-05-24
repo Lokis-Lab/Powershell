@@ -449,6 +449,16 @@ function Get-FirstText {
   if ($first) { $first.InnerText } else { $null }
 }
 
+function Get-GpoDisplayNameFromReportXml {
+  param(
+    [Parameter(Mandatory)][xml]$Xml,
+    [Parameter(Mandatory)][string]$FallbackName
+  )
+  $name = Get-FirstText -Node $Xml -XPath ".//*[local-name()='GPO']/*[local-name()='Name']"
+  if (-not [string]::IsNullOrWhiteSpace($name)) { return $name.Trim() }
+  return $FallbackName
+}
+
 function Get-ScopeFromNode {
   param([Parameter(Mandatory)][System.Xml.XmlNode]$Node)
   $parentOuter = if ($Node.ParentNode) { $Node.ParentNode.OuterXml } else { '' }
@@ -1257,9 +1267,9 @@ function Invoke-FlattenXml {
 
   foreach ($f in $xmlFiles) {
     $dnSafe = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
-    $gpo    = ($dnSafe -replace '_',' ')
 
     [xml]$xml = [xml]([string](Get-Content -LiteralPath $f.FullName -Raw))
+    $gpo = Get-GpoDisplayNameFromReportXml -Xml $xml -FallbackName ($dnSafe -replace '_',' ')
 
     $rows = Get-AllFlattenedRows -Xml $xml -Gpo $gpo
 

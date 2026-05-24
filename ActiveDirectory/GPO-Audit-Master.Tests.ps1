@@ -14,6 +14,46 @@ Describe 'GPO-Audit-Master lazy AD dependency handling' {
     }
   }
 
+  It 'uses the XML report display name for per-GPO flatten CSV paths' {
+    $script:Ast.FindAll({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
+    }, $true) | ForEach-Object {
+      . ([scriptblock]::Create($_.Extent.Text))
+    }
+
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ("gpo-audit-master-test-{0}" -f ([guid]::NewGuid().ToString('N')))
+    try {
+      $exports = Join-Path $root 'Exports'
+      New-Item -ItemType Directory -Path $exports -Force | Out-Null
+
+      $displayName = 'SEC__Workstations'
+      $safeName = New-SafeName $displayName
+      $xmlPath = Join-Path $exports ("{0}.xml" -f $safeName)
+      @"
+<GPO>
+  <Name>$displayName</Name>
+  <Identifier>{11111111-1111-1111-1111-111111111111}</Identifier>
+</GPO>
+"@ | Set-Content -LiteralPath $xmlPath -Encoding UTF8
+
+      Invoke-FlattenXml -OutDir $root
+
+      $flattenDir = Join-Path $root 'Flattened'
+      $expectedPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f (New-SafeName $displayName))
+      $collapsedPath = Join-Path $flattenDir 'Flatten_SEC_Workstations.csv'
+      Test-Path -LiteralPath $expectedPath | Should -BeTrue
+      Test-Path -LiteralPath $collapsedPath | Should -BeFalse
+
+      $rows = @(Import-Csv -LiteralPath $expectedPath)
+      $rows[0].GPO | Should -Be $displayName
+    } finally {
+      if (Test-Path -LiteralPath $root) {
+        Remove-Item -LiteralPath $root -Recurse -Force
+      }
+    }
+  }
+
   It 'opens the two-GPO compare picker without forcing the Active Directory module' {
     $functionAst = $script:Ast.Find({
       param($node)
