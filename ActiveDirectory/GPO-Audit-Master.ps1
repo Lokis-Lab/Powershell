@@ -347,6 +347,46 @@ function New-SafeName {
   $InputString -replace '[^\w\.-]+','_'
 }
 
+function Get-GpoAuditExportFileName {
+  param([Parameter(Mandatory)]$Gpo)
+  $safe = New-SafeName ([string]$Gpo.DisplayName)
+  $id = if ($null -ne $Gpo.Id) { ([string]$Gpo.Id).Trim('{}') } else { '' }
+  if ([string]::IsNullOrWhiteSpace($id)) { return ("{0}.xml" -f $safe) }
+  "{0}_{1}.xml" -f $id, $safe
+}
+
+function Get-GpoDisplayNameFromReportXml {
+  param(
+    [Parameter(Mandatory)][xml]$Xml,
+    [Parameter(Mandatory)][string]$Fallback
+  )
+  $gpoName = Get-FirstText -Node $Xml -XPath ".//*[local-name()='GPO']/*[local-name()='Name']"
+  if ([string]::IsNullOrWhiteSpace($gpoName)) { return $Fallback }
+  $gpoName
+}
+
+function Get-GpoGuidFromReportXml {
+  param([Parameter(Mandatory)][xml]$Xml)
+  $raw = Get-FirstText -Node $Xml -XPath ".//*[local-name()='GPO']/*[local-name()='Identifier']"
+  if ([string]::IsNullOrWhiteSpace($raw)) {
+    $raw = Get-FirstText -Node $Xml -XPath ".//*[local-name()='Identifier']"
+  }
+  if ($raw -match '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}') {
+    return $Matches[0]
+  }
+  $null
+}
+
+function Get-FlattenCanonicalNoGpo {
+  param($Row)
+  if ($null -eq $Row) { return $null }
+  $existing = $Row.PSObject.Properties['CanonicalNoGpo']
+  if ($existing -and -not [string]::IsNullOrWhiteSpace([string]$existing.Value)) {
+    return [string]$existing.Value
+  }
+  '{0}|{1}|{2}|{3}' -f $Row.Scope, $Row.Extension, $Row.Category, $Row.Setting
+}
+
 function Select-Gpos {
   [CmdletBinding()]
   param(
@@ -409,10 +449,12 @@ function Invoke-XmlExport {
     $xmlPaths = $gpos | ForEach-Object -Parallel {
       try {
         $safe = ($PSItem.DisplayName -replace '[^\w\.-]+','_')
-        $file = Join-Path $using:exportDir ("{0}.xml" -f $safe)
+        $id = if ($null -ne $PSItem.Id) { ([string]$PSItem.Id).Trim('{}') } else { '' }
+        $fileName = if ([string]::IsNullOrWhiteSpace($id)) { "{0}.xml" -f $safe } else { "{0}_{1}.xml" -f $id, $safe }
+        $file = Join-Path $using:exportDir $fileName
         $domParams = @{}
         if ($using:domDns) { $domParams['Domain'] = $using:domDns }
-        Get-GPOReport @domParams -Name $PSItem.DisplayName -ReportType XML -Path $file
+        Get-GPOReport @domParams -Guid $PSItem.Id -ReportType XML -Path $file
         $file
       } catch {
         Write-Warning "Failed to export '$($PSItem.DisplayName)': $($_.Exception.Message)"
@@ -422,9 +464,8 @@ function Invoke-XmlExport {
   } else {
     foreach ($g in $gpos) {
       try {
-        $safe = New-SafeName $g.DisplayName
-        $file = Join-Path $exportDir ("{0}.xml" -f $safe)
-        Get-GPOReport @gpoDom -Name $g.DisplayName -ReportType XML -Path $file
+        $file = Join-Path $exportDir (Get-GpoAuditExportFileName -Gpo $g)
+        Get-GPOReport @gpoDom -Guid $g.Id -ReportType XML -Path $file
         $xmlPaths += $file
       } catch {
         Write-Warning "Failed to export '$($g.DisplayName)': $($_.Exception.Message)"
@@ -433,6 +474,10 @@ function Invoke-XmlExport {
   }
 
   $xmlPaths = @($xmlPaths | Where-Object { $_ } | Where-Object { Test-Path -LiteralPath $_ })
+  $script:GpoAuditLastXmlExportPaths = @($xmlPaths)
+  if ($xmlPaths.Count -eq 0) {
+    throw "No GPO XML files were exported to: $exportDir"
+  }
   Write-Host "Exported $($xmlPaths.Count) GPO XML files to: $exportDir" -ForegroundColor Cyan
 }
 
@@ -676,18 +721,18 @@ function Get-AllFlattenedRows {
   if (-not $gpoName) { $gpoName = $Gpo }
   $gpoGuid = Get-FirstText -Node $Xml -XPath ".//*[local-name()='GPO']/*[local-name()='Identifier']"
   if (-not $gpoGuid) { $gpoGuid = Get-FirstText -Node $Xml -XPath ".//*[local-name()='Identifier']" }
-  [void]$rows.Add( (New-FlattenRow -Gpo $Gpo -Scope 'N/A' -Extension 'Metadata' -Category 'GPO' -Setting 'Name' -Value $gpoName -Type 'String') )
-  if ($gpoGuid) { [void]$rows.Add( (New-FlattenRow -Gpo $Gpo -Scope 'N/A' -Extension 'Metadata' -Category 'GPO' -Setting 'GUID' -Value $gpoGuid -Type 'String') ) }
+  [void]$rows.Add( (New-FlattenRow -Gpo $gpoName -Scope 'N/A' -Extension 'Metadata' -Category 'GPO' -Setting 'Name' -Value $gpoName -Type 'String') )
+  if ($gpoGuid) { [void]$rows.Add( (New-FlattenRow -Gpo $gpoName -Scope 'N/A' -Extension 'Metadata' -Category 'GPO' -Setting 'GUID' -Value $gpoGuid -Type 'String') ) }
 
-  Add-FlattenRows -Target $rows -Items (Get-AdminTemplatePolicyRows   -Xml $Xml -Gpo $Gpo)
-  Add-FlattenRows -Target $rows -Items (Get-AdminTemplateRegistryRows -Xml $Xml -Gpo $Gpo)
-  Add-FlattenRows -Target $rows -Items (Get-GPPRegistryRows           -Xml $Xml -Gpo $Gpo)
-  Add-FlattenRows -Target $rows -Items (Get-AdvancedAuditPolicyRows   -Xml $Xml -Gpo $Gpo)
-  Add-FlattenRows -Target $rows -Items (Get-SecuritySettingRows       -Xml $Xml -Gpo $Gpo)
-  Add-FlattenRows -Target $rows -Items (Get-NTServiceRows             -Xml $Xml -Gpo $Gpo)
-  Add-FlattenRows -Target $rows -Items (Get-LugsRows                  -Xml $Xml -Gpo $Gpo)
-  Add-FlattenRows -Target $rows -Items (Get-ScriptRows                -Xml $Xml -Gpo $Gpo)
-  Add-FlattenRows -Target $rows -Items (Get-WlanPolicyRows            -Xml $Xml -Gpo $Gpo)
+  Add-FlattenRows -Target $rows -Items (Get-AdminTemplatePolicyRows   -Xml $Xml -Gpo $gpoName)
+  Add-FlattenRows -Target $rows -Items (Get-AdminTemplateRegistryRows -Xml $Xml -Gpo $gpoName)
+  Add-FlattenRows -Target $rows -Items (Get-GPPRegistryRows           -Xml $Xml -Gpo $gpoName)
+  Add-FlattenRows -Target $rows -Items (Get-AdvancedAuditPolicyRows   -Xml $Xml -Gpo $gpoName)
+  Add-FlattenRows -Target $rows -Items (Get-SecuritySettingRows       -Xml $Xml -Gpo $gpoName)
+  Add-FlattenRows -Target $rows -Items (Get-NTServiceRows             -Xml $Xml -Gpo $gpoName)
+  Add-FlattenRows -Target $rows -Items (Get-LugsRows                  -Xml $Xml -Gpo $gpoName)
+  Add-FlattenRows -Target $rows -Items (Get-ScriptRows                -Xml $Xml -Gpo $gpoName)
+  Add-FlattenRows -Target $rows -Items (Get-WlanPolicyRows            -Xml $Xml -Gpo $gpoName)
 
   return $rows
 }
@@ -1242,24 +1287,33 @@ function Invoke-SearchGpoSettings {
 
 function Invoke-FlattenXml {
   param(
-    [Parameter(Mandatory)][string]$OutDir
+    [Parameter(Mandatory)][string]$OutDir,
+    [string[]]$XmlPath
   )
 
   $flattenDir = Join-Path $OutDir 'Flattened'
   Ensure-Folder -Path $flattenDir
 
   $inDir = Join-Path $OutDir 'Exports'
-  $xmlFiles = Get-ChildItem -LiteralPath $inDir -Filter *.xml -File -ErrorAction Stop
-  if ($xmlFiles.Count -eq 0) { throw "No XML files found in $inDir" }
+  if ($PSBoundParameters.ContainsKey('XmlPath')) {
+    $xmlFiles = @($XmlPath | Where-Object { $_ } | ForEach-Object { Get-Item -LiteralPath $_ -ErrorAction Stop })
+  } else {
+    $xmlFiles = Get-ChildItem -LiteralPath $inDir -Filter *.xml -File -ErrorAction Stop
+  }
+  if ($xmlFiles.Count -eq 0) {
+    $source = if ($PSBoundParameters.ContainsKey('XmlPath')) { 'the provided current-run XML path list' } else { $inDir }
+    throw "No XML files found in $source"
+  }
 
   $allRows = [System.Collections.Generic.List[object]]::new()
   $counts  = @()
+  $script:GpoAuditLastFlattenedCsvByGpo = @{}
 
   foreach ($f in $xmlFiles) {
-    $dnSafe = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
-    $gpo    = ($dnSafe -replace '_',' ')
+    $fallbackGpo = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
 
     [xml]$xml = [xml]([string](Get-Content -LiteralPath $f.FullName -Raw))
+    $gpo = Get-GpoDisplayNameFromReportXml -Xml $xml -Fallback $fallbackGpo
 
     $rows = Get-AllFlattenedRows -Xml $xml -Gpo $gpo
 
@@ -1277,8 +1331,11 @@ function Invoke-FlattenXml {
     }
     $counts += $c
 
-    $flattenPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f (New-SafeName $gpo))
+    $gpoGuid = Get-GpoGuidFromReportXml -Xml $xml
+    $flattenBase = if ($gpoGuid) { "{0}_{1}" -f $gpoGuid, (New-SafeName $gpo) } else { New-SafeName $gpo }
+    $flattenPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f $flattenBase)
     $rows | Sort-Object GPO,Scope,Extension,Category,Setting | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $flattenPath
+    $script:GpoAuditLastFlattenedCsvByGpo[$gpo] = $flattenPath
 
     foreach ($r in $rows) { [void]$allRows.Add($r) }
 
@@ -1322,7 +1379,7 @@ function Invoke-FlattenCompare {
     param($x)
     # Compare at the "setting" level (ignoring which GPO set it) and field group.
     # CanonicalNoGpo is: Scope|Extension|Category|Setting
-    $x.CanonicalNoGpo
+    Get-FlattenCanonicalNoGpo -Row $x
   }
 
   $lIndex = @{}
@@ -1393,6 +1450,31 @@ function Invoke-FlattenCompare {
   Write-Host "Flatten compare sheet written to: $csvOut" -ForegroundColor Cyan
 }
 
+function Resolve-FlattenedGpoCsv {
+  param(
+    [Parameter(Mandatory)][string]$FlattenDir,
+    [Parameter(Mandatory)][string]$GpoName
+  )
+
+  if ($script:GpoAuditLastFlattenedCsvByGpo -and $script:GpoAuditLastFlattenedCsvByGpo.ContainsKey($GpoName)) {
+    return $script:GpoAuditLastFlattenedCsvByGpo[$GpoName]
+  }
+
+  $legacy = Join-Path $FlattenDir ("Flatten_{0}.csv" -f (New-SafeName $GpoName))
+  if (Test-Path -LiteralPath $legacy) { return $legacy }
+
+  $matches = @()
+  foreach ($csv in (Get-ChildItem -LiteralPath $FlattenDir -Filter 'Flatten_*.csv' -File -ErrorAction Stop)) {
+    $first = Import-Csv -LiteralPath $csv.FullName | Select-Object -First 1
+    if ($first -and $first.GPO -eq $GpoName) { $matches += $csv.FullName }
+  }
+  if ($matches.Count -eq 1) { return $matches[0] }
+  if ($matches.Count -gt 1) {
+    throw "Multiple flattened CSVs matched GPO '$GpoName'. Clear stale files from $FlattenDir and retry."
+  }
+  throw "Flattened CSV not found for GPO '$GpoName' in $FlattenDir"
+}
+
 # -------------------- Compare two single-GPO flatten CSVs --------------------
 function Invoke-FlattenGpoCompare {
   param(
@@ -1417,7 +1499,7 @@ function Invoke-FlattenGpoCompare {
   function Make-Id {
     param($x)
     # Compare at the "setting" level (ignoring which GPO set it).
-    $x.CanonicalNoGpo
+    Get-FlattenCanonicalNoGpo -Row $x
   }
 
   $lIndex = @{}
@@ -2171,7 +2253,7 @@ function Show-GpoAuditMasterMainGui {
           $thr = if ($state.ThrottleNum) { [int]$state.ThrottleNum.Value } else { $DefaultThrottle }
           $fp = Get-FilterParams $state
           Invoke-XmlExport -OutDir $outDir -Throttle $thr -IncludeGpoName $fp.IncludeGpoName -IncludeGpoNameRegex $fp.IncludeGpoNameRegex -IncludeGpoId $fp.IncludeGpoId
-          Invoke-FlattenXml -OutDir $outDir
+          Invoke-FlattenXml -OutDir $outDir -XmlPath $script:GpoAuditLastXmlExportPaths
           $statusLabel.Text = "Export + flatten complete: $outDir"
         }
         3 {
@@ -2202,7 +2284,7 @@ function Show-GpoAuditMasterMainGui {
             return
           }
           Invoke-XmlExport -OutDir $outDir -Throttle $thr -IncludeGpoName $fp.IncludeGpoName -IncludeGpoNameRegex $fp.IncludeGpoNameRegex -IncludeGpoId $fp.IncludeGpoId
-          Invoke-FlattenXml -OutDir $outDir
+          Invoke-FlattenXml -OutDir $outDir -XmlPath $script:GpoAuditLastXmlExportPaths
           $leftMaster = Join-Path $baseline "MasterFlatten_AllGPOs.csv"
           $rightMaster = Join-Path $outDir "MasterFlatten_AllGPOs.csv"
           Invoke-FlattenCompare -LeftPath $leftMaster -RightPath $rightMaster -OutFolder $compareOut
@@ -2213,9 +2295,10 @@ function Show-GpoAuditMasterMainGui {
           if (-not $choices) { $statusLabel.Text = "Cancelled."; return }
           Ensure-Folder -Path (Split-Path -Parent $choices.ComparePath -ErrorAction SilentlyContinue)
           Invoke-XmlExport -OutDir $choices.OutDir -Throttle $choices.Throttle -IncludeGpoName @($choices.Gpo1, $choices.Gpo2)
-          Invoke-FlattenXml -OutDir $choices.OutDir
-          $leftCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo1))
-          $rightCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo2))
+          Invoke-FlattenXml -OutDir $choices.OutDir -XmlPath $script:GpoAuditLastXmlExportPaths
+          $flattenDir = Join-Path $choices.OutDir 'Flattened'
+          $leftCsv = Resolve-FlattenedGpoCsv -FlattenDir $flattenDir -GpoName $choices.Gpo1
+          $rightCsv = Resolve-FlattenedGpoCsv -FlattenDir $flattenDir -GpoName $choices.Gpo2
           Invoke-FlattenGpoCompare -LeftCsv $leftCsv -RightCsv $rightCsv -OutCsv $choices.ComparePath
           $statusLabel.Text = "Done: $($choices.ComparePath)"
         }
@@ -2523,7 +2606,7 @@ switch ($Mode) {
   }
   'XmlExportAndFlatten' {
     Invoke-XmlExport -OutDir $OutDir -Throttle $Throttle -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
-    Invoke-FlattenXml -OutDir $OutDir
+    Invoke-FlattenXml -OutDir $OutDir -XmlPath $script:GpoAuditLastXmlExportPaths
   }
   'RegistrySnapshotExport' {
     Invoke-RegistrySnapshotExport -Folder $OutDir -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId

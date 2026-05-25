@@ -1,4 +1,13 @@
 Describe 'GPO-Audit-Master lazy AD dependency handling' {
+  function Get-ParsedFunctionAst {
+    param([Parameter(Mandatory)][string]$Name)
+    $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq $Name
+    }, $true)
+  }
+
   BeforeAll {
     $scriptPath = Join-Path $PSScriptRoot 'GPO-Audit-Master.ps1'
     $tokens = $null
@@ -59,5 +68,57 @@ Describe 'GPO-Audit-Master lazy AD dependency handling' {
     $commandNames[1] | Should -Be 'Show-GpoAuditMasterMainGui'
     $commandNames | Should -Not -Contain 'Initialize-GpoAuditAdContext'
     $commandNames | Should -Not -Contain 'Ensure-GpoAuditAdContextInitialized'
+  }
+
+  It 'uses GPO GUIDs when naming and exporting XML reports' {
+    Invoke-Expression (Get-ParsedFunctionAst -Name 'New-SafeName').Extent.Text
+    Invoke-Expression (Get-ParsedFunctionAst -Name 'Get-GpoAuditExportFileName').Extent.Text
+
+    $first = [pscustomobject]@{
+      DisplayName = 'A B'
+      Id          = [guid]'00000000-0000-0000-0000-000000000001'
+    }
+    $second = [pscustomobject]@{
+      DisplayName = 'A_B'
+      Id          = [guid]'00000000-0000-0000-0000-000000000002'
+    }
+
+    Get-GpoAuditExportFileName -Gpo $first | Should -Be '00000000-0000-0000-0000-000000000001_A_B.xml'
+    Get-GpoAuditExportFileName -Gpo $second | Should -Be '00000000-0000-0000-0000-000000000002_A_B.xml'
+    Get-GpoAuditExportFileName -Gpo $first | Should -Not -Be (Get-GpoAuditExportFileName -Gpo $second)
+
+    $exportText = (Get-ParsedFunctionAst -Name 'Invoke-XmlExport').Extent.Text
+    $exportText | Should -Match '-Guid\s+\$PSItem\.Id'
+    $exportText | Should -Match '-Guid\s+\$g\.Id'
+  }
+
+  It 'flattens only provided current-run XML paths and reads the GPO name from XML' {
+    $flattenText = (Get-ParsedFunctionAst -Name 'Invoke-FlattenXml').Extent.Text
+
+    $flattenText | Should -Match '\[string\[\]\]\$XmlPath'
+    $flattenText | Should -Match "PSBoundParameters\.ContainsKey\('XmlPath'\)"
+    $flattenText | Should -Match 'Get-GpoDisplayNameFromReportXml'
+    $flattenText | Should -Not -Match "-replace '_',' '"
+  }
+
+  It 'falls back to row fields when older flatten CSVs lack CanonicalNoGpo' {
+    Invoke-Expression (Get-ParsedFunctionAst -Name 'Get-FlattenCanonicalNoGpo').Extent.Text
+
+    $oldRow = [pscustomobject]@{
+      Scope     = 'Computer'
+      Extension = 'Security'
+      Category  = 'AdvancedAudit'
+      Setting   = 'Audit Logon'
+    }
+    $newRow = [pscustomobject]@{
+      Scope          = 'Computer'
+      Extension      = 'Security'
+      Category       = 'AdvancedAudit'
+      Setting        = 'Audit Logon'
+      CanonicalNoGpo = 'Computer|Security|AdvancedAudit|Audit Logon'
+    }
+
+    Get-FlattenCanonicalNoGpo -Row $oldRow | Should -Be 'Computer|Security|AdvancedAudit|Audit Logon'
+    Get-FlattenCanonicalNoGpo -Row $newRow | Should -Be 'Computer|Security|AdvancedAudit|Audit Logon'
   }
 }
