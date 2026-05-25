@@ -1,13 +1,4 @@
 Describe 'GPO-Audit-Master lazy AD dependency handling' {
-  function Get-ParsedFunctionAst {
-    param([Parameter(Mandatory)][string]$Name)
-    $script:Ast.Find({
-      param($node)
-      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-        $node.Name -eq $Name
-    }, $true)
-  }
-
   BeforeAll {
     $scriptPath = Join-Path $PSScriptRoot 'GPO-Audit-Master.ps1'
     $tokens = $null
@@ -20,6 +11,15 @@ Describe 'GPO-Audit-Master lazy AD dependency handling' {
 
     if ($parseErrors -and $parseErrors.Count -gt 0) {
       throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+
+    $script:GetParsedFunctionAst = {
+      param([Parameter(Mandatory)][string]$Name)
+      $script:Ast.Find({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+          $node.Name -eq $Name
+      }, $true)
     }
   }
 
@@ -71,8 +71,8 @@ Describe 'GPO-Audit-Master lazy AD dependency handling' {
   }
 
   It 'uses GPO GUIDs when naming and exporting XML reports' {
-    Invoke-Expression (Get-ParsedFunctionAst -Name 'New-SafeName').Extent.Text
-    Invoke-Expression (Get-ParsedFunctionAst -Name 'Get-GpoAuditExportFileName').Extent.Text
+    Invoke-Expression (& $script:GetParsedFunctionAst -Name 'New-SafeName').Extent.Text
+    Invoke-Expression (& $script:GetParsedFunctionAst -Name 'Get-GpoAuditExportFileName').Extent.Text
 
     $first = [pscustomobject]@{
       DisplayName = 'A B'
@@ -87,13 +87,13 @@ Describe 'GPO-Audit-Master lazy AD dependency handling' {
     Get-GpoAuditExportFileName -Gpo $second | Should -Be '00000000-0000-0000-0000-000000000002_A_B.xml'
     Get-GpoAuditExportFileName -Gpo $first | Should -Not -Be (Get-GpoAuditExportFileName -Gpo $second)
 
-    $exportText = (Get-ParsedFunctionAst -Name 'Invoke-XmlExport').Extent.Text
+    $exportText = (& $script:GetParsedFunctionAst -Name 'Invoke-XmlExport').Extent.Text
     $exportText | Should -Match '-Guid\s+\$PSItem\.Id'
     $exportText | Should -Match '-Guid\s+\$g\.Id'
   }
 
   It 'flattens only provided current-run XML paths and reads the GPO name from XML' {
-    $flattenText = (Get-ParsedFunctionAst -Name 'Invoke-FlattenXml').Extent.Text
+    $flattenText = (& $script:GetParsedFunctionAst -Name 'Invoke-FlattenXml').Extent.Text
 
     $flattenText | Should -Match '\[string\[\]\]\$XmlPath'
     $flattenText | Should -Match "PSBoundParameters\.ContainsKey\('XmlPath'\)"
@@ -102,7 +102,7 @@ Describe 'GPO-Audit-Master lazy AD dependency handling' {
   }
 
   It 'falls back to row fields when older flatten CSVs lack CanonicalNoGpo' {
-    Invoke-Expression (Get-ParsedFunctionAst -Name 'Get-FlattenCanonicalNoGpo').Extent.Text
+    Invoke-Expression (& $script:GetParsedFunctionAst -Name 'Get-FlattenCanonicalNoGpo').Extent.Text
 
     $oldRow = [pscustomobject]@{
       Scope     = 'Computer'
