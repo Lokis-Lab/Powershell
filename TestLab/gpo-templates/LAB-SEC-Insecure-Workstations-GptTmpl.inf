@@ -1,0 +1,34 @@
+; Security template fragment for LAB - SEC Insecure Workstations
+; Applied under: Policies\{GPO-GUID}\Machine\Microsoft\Windows NT\SecEdit\GptTmpl.inf
+[Unicode]
+Unicode=yes
+[Version]
+signature="$CHICAGO$"
+Revision=1
+[System Access]
+MinimumPasswordLength = 7
+PasswordComplexity = 0
+MaximumPasswordAge = -1
+MinimumPasswordAge = 0
+PasswordHistorySize = 0
+LockoutBadCount = 0
+ResetLockoutCount = 0
+LockoutDuration = 0
+RequireLogonToChangePassword = 0
+ForceLogoffWhenHourExpire = 0
+[Registry Values]
+MACHINE\System\CurrentControlSet\Control\Lsa\LmCompatibilityLevel=1,4
+MACHINE\System\CurrentControlSet\Services\LanmanServer\Parameters\RequireSecuritySignature=0,4
+MACHINE\System\CurrentControlSet\Services\LanmanWorkstation\Parameters\EnableSecuritySignature=0,4
+MACHINE\System\CurrentControlSet\Services\LanmanWorkstation\Parameters\RequireSecuritySignature=0,4
+MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\DisableCAD=1,4
+[Event Audit]
+AuditSystemEvents = 0
+AuditLogonEvents = 0
+AuditObjectAccess = 0
+AuditPrivilegeUse = 0
+AuditPolicyChange = 0
+AuditAccountManage = 0
+AuditProcessTracking = 0
+AuditDSAccess = 0
+AuditAccountLogon = 0

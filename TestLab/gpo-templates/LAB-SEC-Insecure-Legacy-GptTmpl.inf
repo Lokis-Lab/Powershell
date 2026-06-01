@@ -1,0 +1,13 @@
+; Security template fragment for LAB - SEC Insecure Legacy
+[Unicode]
+Unicode=yes
+[Version]
+signature="$CHICAGO$"
+Revision=1
+[Registry Values]
+MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse=0,4
+MACHINE\System\CurrentControlSet\Control\Lsa\RestrictAnonymous=0,4
+MACHINE\System\CurrentControlSet\Control\Lsa\RestrictAnonymousSAM=0,4
+MACHINE\System\CurrentControlSet\Control\Lsa\EveryoneIncludesAnonymous=1,4
+MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\DisableCAD=1,4
+MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\DontDisplayLastUserName=0,4

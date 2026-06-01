@@ -1,0 +1,46 @@
+# Samba AD DC for lightweight lab testing (LDAP/users; GPO via RSAT is best on Windows Server).
+# Requires Docker and Linux host networking or published AD ports.
+#
+# Start:  docker compose -f TestLab/docker-compose.yml up -d
+# Seed:   docker compose -f TestLab/docker-compose.yml exec dc1 /bootstrap/seed-samba-lab.sh
+# Logs:   docker compose -f TestLab/docker-compose.yml logs -f dc1
+
+services:
+  dc1:
+    image: diegogslomp/samba-ad-dc:latest
+    container_name: scripttest-dc1
+    hostname: DC1
+    privileged: true
+    restart: unless-stopped
+    environment:
+      REALM: LAB.SCRIPTTEST.LOCAL
+      DOMAIN: SCRIPTTEST
+      ADMIN_PASS: ${LAB_ADMIN_PASSWORD:-P@ssw0rd!Lab2026}
+      DNS_FORWARDER: 8.8.8.8
+      BIND_NETWORK_INTERFACES: "false"
+    volumes:
+      - dc1_etc:/usr/local/samba/etc
+      - dc1_private:/usr/local/samba/private
+      - dc1_var:/usr/local/samba/var
+      - ./bootstrap:/bootstrap:ro
+      - ./gpo-templates:/gpo-seed:ro
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "88:88/tcp"
+      - "88:88/udp"
+      - "135:135/tcp"
+      - "139:139/tcp"
+      - "389:389/tcp"
+      - "389:389/udp"
+      - "445:445/tcp"
+      - "464:464/tcp"
+      - "464:464/udp"
+      - "636:636/tcp"
+      - "3268:3268/tcp"
+      - "3269:3269/tcp"
+
+volumes:
+  dc1_etc:
+  dc1_private:
+  dc1_var:

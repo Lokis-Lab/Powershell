@@ -18,5 +18,6 @@ This repository is a collection of standalone PowerShell scripts (`.ps1`) for Mi
 
 - Most scripts require live Microsoft 365 tenant credentials (Graph API, Exchange Online, Defender) and/or on-premises Active Directory. They cannot be fully exercised in this Linux VM without those services.
 - The best candidates for local testing are `Networking/Sort-ComputersBySubnet.ps1` and `Vulnerabilities/Build-CVELocalRepository.ps1` (NVD API only needs internet and an optional API key).
+- For Active Directory / GPO scripts, use **`TestLab/`**: run `TestLab/Initialize-TestLabDomain.ps1` on a domain-joined Windows host with RSAT, or `TestLab/docker-compose.yml` for a Samba AD DC (see `TestLab/README.md`). Pester: `TestLab/TestLab.Tests.ps1`.
 - `Modules/Private/Get-Secret.ps1` has a known parse issue: `$env:$Name` on line 37 is not valid PowerShell syntax. This is a pre-existing repo issue.
 - PSScriptAnalyzer reports ~147 warnings (mostly `PSAvoidUsingWriteHost` and `PSUseApprovedVerbs`); there are 0 errors.

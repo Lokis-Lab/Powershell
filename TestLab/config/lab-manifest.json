@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "description": "Intentional mix of NIST-aligned and deliberately weak AD objects for script testing. Lab use only.",
+  "domain": {
+    "dnsName": "lab.scripttest.local",
+    "netbiosName": "SCRIPTTEST",
+    "defaultAdmin": "Administrator",
+    "defaultPassword": "P@ssw0rd!Lab2026"
+  },
+  "organizationalUnits": [
+  { "name": "Workstations", "description": "Client OUs for workstation GPO links" },
+  { "name": "Servers", "description": "Server OUs" },
+  {
+    "name": "Users",
+    "children": [
+      { "name": "IT", "description": "Compliant-style users" },
+      { "name": "Sales", "description": "Mixed compliance" },
+      { "name": "Finance", "description": "Finance users" },
+      { "name": "Legacy", "description": "Intentionally weak accounts and policies" }
+    ]
+  }
+  ],
+  "groupPolicyObjects": [
+  {
+    "name": "LAB - Baseline Compliant Workstations",
+    "compliance": "aligned",
+    "links": ["OU=Workstations"],
+    "notes": "Reasonable audit and auth settings for contrast in GPO-Audit-Master diffs"
+  },
+  {
+    "name": "LAB - SEC Insecure Workstations",
+    "compliance": "non-compliant",
+    "links": ["OU=Workstations"],
+    "nistGaps": [
+      "Minimum password length below 14",
+      "Password complexity disabled",
+      "LM/NTLMv1 permitted",
+      "SMB signing not required",
+      "Weak audit policy",
+      "Firewall profiles disabled"
+    ]
+  },
+  {
+    "name": "LAB - SEC Insecure Legacy",
+    "compliance": "non-compliant",
+    "links": ["OU=Legacy,OU=Users"],
+    "nistGaps": [
+      "Legacy authentication protocols",
+      "Anonymous SID enumeration allowed",
+      "Interactive logon without Ctrl+Alt+Del"
+    ]
+  },
+  {
+    "name": "LAB - Servers Hardened",
+    "compliance": "aligned",
+    "links": ["OU=Servers"],
+    "notes": "Hardened server baseline for comparison"
+  },
+  {
+    "name": "CIS - Dummy Baseline Name",
+    "compliance": "aligned",
+    "links": [],
+    "notes": "Unlinked GPO to exercise IncludeGpoNameRegex filters like ^(CIS|STIG)"
+  }
+  ],
+  "users": [
+  { "samAccountName": "alice.it", "ou": "IT", "passwordNeverExpires": false, "description": "Compliant IT user" },
+  { "samAccountName": "bob.sales", "ou": "Sales", "passwordNeverExpires": false, "description": "Standard sales user" },
+  { "samAccountName": "carol.finance", "ou": "Finance", "passwordNeverExpires": false, "description": "Finance user" },
+  { "samAccountName": "svc_backup", "ou": "Legacy", "passwordNeverExpires": true, "description": "Service account — PasswordNeverExpires (audit target)" },
+  { "samAccountName": "jim.legacy", "ou": "Legacy", "passwordNeverExpires": true, "description": "Legacy OU user with weak posture" },
+  { "samAccountName": "admin_legacy", "ou": "Legacy", "passwordNeverExpires": true, "description": "Legacy admin-style account for risky scenarios" },
+  { "samAccountName": "disabled.audit", "ou": "IT", "enabled": false, "description": "Disabled account for filter testing" }
+  ],
+  "computers": [
+  { "name": "WS-IT-01", "ou": "Workstations" },
+  { "name": "WS-SALES-01", "ou": "Workstations" },
+  { "name": "SRV-FILE-01", "ou": "Servers" }
+  ]
+}

@@ -36,6 +36,10 @@ Connect-ExchangeOnline
 
 ## 📚 Script Catalog
 
+### `TestLab/`
+
+- **[TestLab/README.md](TestLab/README.md)** — Isolated AD lab with test users, OUs, and GPOs (including intentionally weak / non-NIST settings) for script validation. Bootstrap with `Initialize-TestLabDomain.ps1`, Docker Samba, or AutomatedLab.
+
 ### `ActiveDirectory/`
 
 - **[Get-ADPasswordExpiryReport.ps1](ActiveDirectory/Get-ADPasswordExpiryReport.ps1)** — Report AD users close to password expiry (requires RSAT/AD module).
