@@ -2488,7 +2488,6 @@ function Show-GpoCompareDialog {
 
   $gpos = @()
   try {
-    Ensure-GpoAuditAdContextInitialized
     $gpoDom = Get-GpoAuditGpoDomainSplat
     $gpos = Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName | ForEach-Object { $_.DisplayName }
   } catch {
@@ -3179,7 +3178,6 @@ function Invoke-AdGpoAuditMasterMode {
     }
     { $_ -in 'XmlExport', 'FlattenXml', 'XmlExportAndFlatten', 'RegistrySnapshotExport', 'RegistrySnapshotCompare', 'SearchSettings' } {
       Import-GroupPolicyModule
-      Ensure-AuditAdContextInitialized
       switch ($Mode) {
         'XmlExport' {
           Invoke-XmlExport -OutDir $OutDir -Throttle $Throttle -IncludeGpoName $IncludeGpoName `
@@ -3583,6 +3581,7 @@ trap {
 }
 
 if (-not $PSBoundParameters.ContainsKey('Mode')) {
+  Set-AuditRequestedDomain -DomainDnsName $DomainDnsName
   Show-AdGpoAuditMasterMainGui -DefaultOutDir $OutDir -DefaultThrottle $Throttle -InitialDomainDnsName $DomainDnsName
   return
 }
