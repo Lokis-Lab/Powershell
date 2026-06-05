@@ -409,7 +409,8 @@ function Invoke-XmlExport {
     $xmlPaths = $gpos | ForEach-Object -Parallel {
       try {
         $safe = ($PSItem.DisplayName -replace '[^\w\.-]+','_')
-        $file = Join-Path $using:exportDir ("{0}.xml" -f $safe)
+        $guid = ([string]$PSItem.Id).Trim('{}')
+        $file = Join-Path $using:exportDir ("{0}_{1}.xml" -f $safe, $guid)
         $domParams = @{}
         if ($using:domDns) { $domParams['Domain'] = $using:domDns }
         Get-GPOReport @domParams -Name $PSItem.DisplayName -ReportType XML -Path $file
@@ -423,7 +424,8 @@ function Invoke-XmlExport {
     foreach ($g in $gpos) {
       try {
         $safe = New-SafeName $g.DisplayName
-        $file = Join-Path $exportDir ("{0}.xml" -f $safe)
+        $guid = ([string]$g.Id).Trim('{}')
+        $file = Join-Path $exportDir ("{0}_{1}.xml" -f $safe, $guid)
         Get-GPOReport @gpoDom -Name $g.DisplayName -ReportType XML -Path $file
         $xmlPaths += $file
       } catch {
@@ -1256,10 +1258,13 @@ function Invoke-FlattenXml {
   $counts  = @()
 
   foreach ($f in $xmlFiles) {
-    $dnSafe = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
-    $gpo    = ($dnSafe -replace '_',' ')
-
     [xml]$xml = [xml]([string](Get-Content -LiteralPath $f.FullName -Raw))
+    $gpo = Get-FirstText -Node $xml.DocumentElement -XPath ".//*[local-name()='GPO']/*[local-name()='Name']"
+    if (-not $gpo) {
+      $dnSafe = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+      if ($dnSafe -match '^(.*)_[0-9a-fA-F-]{36}$') { $dnSafe = $Matches[1] }
+      $gpo = ($dnSafe -replace '_', ' ')
+    }
 
     $rows = Get-AllFlattenedRows -Xml $xml -Gpo $gpo
 

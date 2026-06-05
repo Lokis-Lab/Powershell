@@ -61,3 +61,43 @@ Describe 'GPO-Audit-Master lazy AD dependency handling' {
     $commandNames | Should -Not -Contain 'Ensure-GpoAuditAdContextInitialized'
   }
 }
+
+Describe 'GPO-Audit-Master XML export uniqueness' {
+  BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot 'GPO-Audit-Master.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+      throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+  }
+
+  It 'includes GPO GUID in exported XML filenames' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match '\{0\}_\{1\}\.xml'
+    $functionAst.Body.Extent.Text | Should -Match '\$guid\s*=\s*\(\[string\]\$g\.Id\)\.Trim'
+  }
+
+  It 'reads GPO display name from report XML when flattening' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-FlattenXml'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match "local-name\(\)='GPO'.*local-name\(\)='Name'"
+  }
+}
