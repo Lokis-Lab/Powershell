@@ -38,6 +38,32 @@ Describe 'AD-GPO-Audit-Master GUI AD run handler' {
   }
 }
 
+Describe 'PowerShell script parse smoke tests' {
+  It 'parses Invoke-AfterHoursGpoPolicyAudit.ps1 without errors' {
+    $scriptPath = Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    [void][System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+    $parseErrors | Should -BeNullOrEmpty
+  }
+
+  It 'parses Invoke-AADConnectSync.ps1 without errors' {
+    $scriptPath = Join-Path $PSScriptRoot 'Invoke-AADConnectSync.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    [void][System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+    $parseErrors | Should -BeNullOrEmpty
+  }
+}
+
 Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
   BeforeAll {
     function script:Expand-ZipIfNeededForTest {
