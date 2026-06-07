@@ -125,10 +125,16 @@ function Create-LocalCVERepository {
         $cveData = Fetch-CVERecords -StartIndex $startIndex
         if (-not $cveData) { break }
 
+        $pageCount = @($cveData.vulnerabilities).Count
+        if ($pageCount -eq 0) {
+            Write-Warning "NVD returned no vulnerabilities at startIndex $startIndex (totalResults=$($cveData.totalResults)). Stopping to avoid an infinite loop."
+            break
+        }
+
         Store-CVEInCSV -CVERecords $cveData -CsvFolder $CsvFolder
 
         $totalResults = $cveData.totalResults
-        $startIndex += $cveData.vulnerabilities.Count
+        $startIndex += $pageCount
         $requestCount++
         Start-Sleep -Seconds 1
     }
