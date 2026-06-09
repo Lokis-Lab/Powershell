@@ -262,6 +262,26 @@ function New-SafeName {
   $InputString -replace '[^\w\.-]+', '_'
 }
 
+function Get-GpoFlattenCsvPath {
+  param(
+    [Parameter(Mandatory)][string]$OutDir,
+    [Parameter(Mandatory)][string]$GpoDisplayName
+  )
+
+  $flattenDir = Join-Path $OutDir 'Flattened'
+  $safe = New-SafeName $GpoDisplayName
+  $gpoDom = Get-GpoAuditGpoDomainSplat
+  $g = Get-GPO @gpoDom -Name $GpoDisplayName -ErrorAction Stop
+  $guid = ([string]$g.Id).Trim('{}')
+  $path = Join-Path $flattenDir ("Flatten_{0}_{1}.csv" -f $safe, $guid)
+  if (Test-Path -LiteralPath $path) { return $path }
+
+  $legacy = Join-Path $flattenDir ("Flatten_{0}.csv" -f $safe)
+  if (Test-Path -LiteralPath $legacy) { return $legacy }
+
+  throw "Flatten CSV not found for GPO '$GpoDisplayName' (expected $path)."
+}
+
 
 # AD Audit Master function library. Dot-source via AD-Audit-Master.ps1 or AD-GPO-Audit-Master.ps1.
 function Get-AdAuditCanonicalPath {
@@ -1209,8 +1229,8 @@ function Invoke-GpoAuditMasterGuiAction {
           Ensure-Folder -Path (Split-Path -Parent $choices.ComparePath -ErrorAction SilentlyContinue)
           Invoke-XmlExport -OutDir $choices.OutDir -Throttle $choices.Throttle -IncludeGpoName @($choices.Gpo1, $choices.Gpo2)
           Invoke-FlattenXml -OutDir $choices.OutDir
-          $leftCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo1))
-          $rightCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo2))
+          $leftCsv = Get-GpoFlattenCsvPath -OutDir $choices.OutDir -GpoDisplayName $choices.Gpo1
+          $rightCsv = Get-GpoFlattenCsvPath -OutDir $choices.OutDir -GpoDisplayName $choices.Gpo2
           Invoke-FlattenGpoCompare -LeftCsv $leftCsv -RightCsv $rightCsv -OutCsv $choices.ComparePath
           $statusText = "Done: $($choices.ComparePath)"
         }
@@ -1356,6 +1376,8 @@ function Invoke-XmlExport {
 
   $exportDir = Join-Path $OutDir 'Exports'
   Ensure-Folder -Path $exportDir
+  Get-ChildItem -LiteralPath $exportDir -Filter '*.xml' -File -ErrorAction SilentlyContinue |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
 
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $allGpos = Get-GPO @gpoDom -All | Sort-Object DisplayName
@@ -2246,7 +2268,8 @@ function Invoke-FlattenXml {
     }
     $counts += $c
 
-    $flattenPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f (New-SafeName $gpo))
+    $flattenStem = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+    $flattenPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f $flattenStem)
     $rows | Sort-Object GPO,Scope,Extension,Category,Setting | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $flattenPath
 
     foreach ($r in $rows) { [void]$allRows.Add($r) }

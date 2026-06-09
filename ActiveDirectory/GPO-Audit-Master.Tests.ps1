@@ -100,4 +100,28 @@ Describe 'GPO-Audit-Master XML export uniqueness' {
     $functionAst | Should -Not -BeNullOrEmpty
     $functionAst.Body.Extent.Text | Should -Match "local-name\(\)='GPO'.*local-name\(\)='Name'"
   }
+
+  It 'clears stale XML exports before writing a new export batch' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match "Filter '\*\.xml'"
+    $functionAst.Body.Extent.Text | Should -Match 'Remove-Item -LiteralPath'
+  }
+
+  It 'names flatten CSV files from the exported XML stem so GPO GUIDs stay unique' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-FlattenXml'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'GetFileNameWithoutExtension\(\$f\.Name\)'
+    $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}\.csv'
+  }
 }
