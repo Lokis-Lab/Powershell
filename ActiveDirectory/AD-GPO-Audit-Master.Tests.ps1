@@ -36,6 +36,30 @@ Describe 'AD-GPO-Audit-Master GUI AD run handler' {
     $guiFunction.Body.Extent.Text | Should -Match 'OuFilterCb'
     $guiFunction.Body.Extent.Text | Should -Not -Match 'OuFilterTb'
   }
+
+  It 'filters disabled groups in Get-AdAuditGroupInventory when -IncludeDisabled is not set' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-AdAuditGroupInventory'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'if \(-not \$IncludeDisabled\)'
+    $functionAst.Body.Extent.Text | Should -Match 'Enabled -eq \$true'
+  }
+
+  It 'includes GPO GUID in per-GPO flatten CSV filenames' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-FlattenXml'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}\{1\}\.csv'
+    $functionAst.Body.Extent.Text | Should -Match '\$guidSuffix'
+  }
 }
 
 Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {

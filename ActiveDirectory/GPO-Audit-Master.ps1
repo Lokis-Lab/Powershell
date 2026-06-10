@@ -347,6 +347,26 @@ function New-SafeName {
   $InputString -replace '[^\w\.-]+','_'
 }
 
+function Get-FlattenCsvPathForGpo {
+  param(
+    [Parameter(Mandatory)][string]$FlattenDir,
+    [Parameter(Mandatory)][string]$GpoDisplayName
+  )
+
+  $safe = New-SafeName $GpoDisplayName
+  $legacy = Join-Path $FlattenDir ("Flatten_{0}.csv" -f $safe)
+  if (Test-Path -LiteralPath $legacy) { return $legacy }
+
+  $candidates = @(
+    Get-ChildItem -LiteralPath $FlattenDir -Filter ("Flatten_{0}_*.csv" -f $safe) -File -ErrorAction SilentlyContinue
+  )
+  if ($candidates.Count -eq 1) { return $candidates[0].FullName }
+  if ($candidates.Count -gt 1) {
+    throw "Multiple flatten CSV files match GPO '$GpoDisplayName' in $FlattenDir"
+  }
+  throw "Flatten CSV not found for GPO '$GpoDisplayName' in $FlattenDir"
+}
+
 function Select-Gpos {
   [CmdletBinding()]
   param(
@@ -1282,7 +1302,9 @@ function Invoke-FlattenXml {
     }
     $counts += $c
 
-    $flattenPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f (New-SafeName $gpo))
+    $guidSuffix = ''
+    if ($f.BaseName -match '_([0-9a-fA-F-]{36})$') { $guidSuffix = "_{0}" -f $Matches[1] }
+    $flattenPath = Join-Path $flattenDir ("Flatten_{0}{1}.csv" -f (New-SafeName $gpo), $guidSuffix)
     $rows | Sort-Object GPO,Scope,Extension,Category,Setting | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $flattenPath
 
     foreach ($r in $rows) { [void]$allRows.Add($r) }
@@ -2219,8 +2241,9 @@ function Show-GpoAuditMasterMainGui {
           Ensure-Folder -Path (Split-Path -Parent $choices.ComparePath -ErrorAction SilentlyContinue)
           Invoke-XmlExport -OutDir $choices.OutDir -Throttle $choices.Throttle -IncludeGpoName @($choices.Gpo1, $choices.Gpo2)
           Invoke-FlattenXml -OutDir $choices.OutDir
-          $leftCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo1))
-          $rightCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo2))
+          $flattenedDir = Join-Path $choices.OutDir 'Flattened'
+          $leftCsv = Get-FlattenCsvPathForGpo -FlattenDir $flattenedDir -GpoDisplayName $choices.Gpo1
+          $rightCsv = Get-FlattenCsvPathForGpo -FlattenDir $flattenedDir -GpoDisplayName $choices.Gpo2
           Invoke-FlattenGpoCompare -LeftCsv $leftCsv -RightCsv $rightCsv -OutCsv $choices.ComparePath
           $statusLabel.Text = "Done: $($choices.ComparePath)"
         }
