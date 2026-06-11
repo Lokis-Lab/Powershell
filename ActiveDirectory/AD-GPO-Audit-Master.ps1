@@ -262,6 +262,31 @@ function New-SafeName {
   $InputString -replace '[^\w\.-]+', '_'
 }
 
+function Get-GpoGuidFromReportXml {
+  param([xml]$Xml)
+  $gpoGuid = Get-FirstText -Node $Xml.DocumentElement -XPath ".//*[local-name()='GPO']/*[local-name()='Identifier']"
+  if (-not $gpoGuid) { $gpoGuid = Get-FirstText -Node $Xml.DocumentElement -XPath ".//*[local-name()='Identifier']" }
+  if ($gpoGuid) { return ([string]$gpoGuid).Trim('{}') }
+  return $null
+}
+
+function Resolve-FlattenCsvPath {
+  param(
+    [Parameter(Mandatory)][string]$OutDir,
+    [Parameter(Mandatory)][string]$GpoDisplayName
+  )
+  $flattenDir = Join-Path $OutDir 'Flattened'
+  $safe = New-SafeName $GpoDisplayName
+  $gpoDom = Get-GpoAuditGpoDomainSplat
+  $gpo = Get-GPO @gpoDom -Name $GpoDisplayName -ErrorAction Stop
+  $guid = ([string]$gpo.Id).Trim('{}')
+  $guided = Join-Path $flattenDir ("Flatten_{0}_{1}.csv" -f $safe, $guid)
+  if (Test-Path -LiteralPath $guided) { return $guided }
+  $legacy = Join-Path $flattenDir ("Flatten_{0}.csv" -f $safe)
+  if (Test-Path -LiteralPath $legacy) { return $legacy }
+  return $guided
+}
+
 
 # AD Audit Master function library. Dot-source via AD-Audit-Master.ps1 or AD-GPO-Audit-Master.ps1.
 function Get-AdAuditCanonicalPath {
@@ -1209,8 +1234,8 @@ function Invoke-GpoAuditMasterGuiAction {
           Ensure-Folder -Path (Split-Path -Parent $choices.ComparePath -ErrorAction SilentlyContinue)
           Invoke-XmlExport -OutDir $choices.OutDir -Throttle $choices.Throttle -IncludeGpoName @($choices.Gpo1, $choices.Gpo2)
           Invoke-FlattenXml -OutDir $choices.OutDir
-          $leftCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo1))
-          $rightCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo2))
+          $leftCsv = Resolve-FlattenCsvPath -OutDir $choices.OutDir -GpoDisplayName $choices.Gpo1
+          $rightCsv = Resolve-FlattenCsvPath -OutDir $choices.OutDir -GpoDisplayName $choices.Gpo2
           Invoke-FlattenGpoCompare -LeftCsv $leftCsv -RightCsv $rightCsv -OutCsv $choices.ComparePath
           $statusText = "Done: $($choices.ComparePath)"
         }
@@ -2246,7 +2271,14 @@ function Invoke-FlattenXml {
     }
     $counts += $c
 
-    $flattenPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f (New-SafeName $gpo))
+    $gpoGuid = Get-GpoGuidFromReportXml -Xml $xml
+    if (-not $gpoGuid -and $f.Name -match '_([0-9a-fA-F-]{36})\.xml$') { $gpoGuid = $Matches[1] }
+    $flattenBase = New-SafeName $gpo
+    if ($gpoGuid) {
+      $flattenPath = Join-Path $flattenDir ("Flatten_{0}_{1}.csv" -f $flattenBase, $gpoGuid)
+    } else {
+      $flattenPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f $flattenBase)
+    }
     $rows | Sort-Object GPO,Scope,Extension,Category,Setting | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $flattenPath
 
     foreach ($r in $rows) { [void]$allRows.Add($r) }

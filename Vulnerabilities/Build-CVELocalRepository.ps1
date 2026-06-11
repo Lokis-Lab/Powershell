@@ -109,8 +109,28 @@ function Store-CVEInCSV {
     }
 }
 
+# --- Function: Count existing CVE rows across split CSV files
+function Get-ExistingCveRecordCount {
+    param([string]$CsvFolder)
+
+    $total = 0
+    $csvIndex = 1
+    while ($true) {
+        $path = Join-Path $CsvFolder "cve_repository_$csvIndex.csv"
+        if (-not (Test-Path -Path $path)) { break }
+        $rows = Import-Csv -Path $path -ErrorAction SilentlyContinue
+        if ($rows) { $total += @($rows).Count }
+        $csvIndex++
+    }
+    return $total
+}
+
 # --- Function: Build local CVE repository
 function Create-LocalCVERepository {
+    if ((Get-ExistingCveRecordCount -CsvFolder $CsvFolder) -gt 0) {
+        throw "CVE repository at '$CsvFolder' already contains records. Delete the folder or choose a different -CsvFolder to avoid duplicate data."
+    }
+
     $startIndex = 0
     $totalResults = 1
     $requestCount = 0
@@ -123,12 +143,19 @@ function Create-LocalCVERepository {
         }
 
         $cveData = Fetch-CVERecords -StartIndex $startIndex
-        if (-not $cveData) { break }
+        if (-not $cveData) {
+            throw "Failed to fetch CVE data at startIndex $startIndex. Repository sync aborted to prevent incomplete data."
+        }
+
+        $pageCount = @($cveData.vulnerabilities).Count
+        if ($pageCount -eq 0 -and $startIndex -lt $cveData.totalResults) {
+            throw "NVD API returned an empty vulnerabilities page at startIndex $startIndex (totalResults=$($cveData.totalResults)). Aborting to avoid an infinite loop."
+        }
 
         Store-CVEInCSV -CVERecords $cveData -CsvFolder $CsvFolder
 
         $totalResults = $cveData.totalResults
-        $startIndex += $cveData.vulnerabilities.Count
+        $startIndex += $pageCount
         $requestCount++
         Start-Sleep -Seconds 1
     }
