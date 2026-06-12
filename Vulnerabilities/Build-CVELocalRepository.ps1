@@ -110,6 +110,31 @@ function Store-CVEInCSV {
 }
 
 # --- Function: Build local CVE repository
+function Get-CvePageCount {
+    param([Parameter(Mandatory)]$CveData)
+
+    if ($null -eq $CveData.vulnerabilities) { return 0 }
+    return @($CveData.vulnerabilities).Count
+}
+
+function Assert-CveFetchPage {
+    param(
+        $CveData,
+        [Parameter(Mandatory)][int]$StartIndex
+    )
+
+    if (-not $CveData) {
+        throw "Failed to fetch CVE records at startIndex ${StartIndex}. Local repository may be incomplete; re-run after resolving the API error."
+    }
+
+    $pageCount = Get-CvePageCount -CveData $CveData
+    if ($pageCount -eq 0 -and $StartIndex -lt $CveData.totalResults) {
+        throw "NVD API returned an empty page at startIndex ${StartIndex} (totalResults=$($CveData.totalResults)). Aborting to avoid an infinite loop."
+    }
+
+    return $pageCount
+}
+
 function Create-LocalCVERepository {
     $startIndex = 0
     $totalResults = 1
@@ -123,16 +148,18 @@ function Create-LocalCVERepository {
         }
 
         $cveData = Fetch-CVERecords -StartIndex $startIndex
-        if (-not $cveData) { break }
+        $pageCount = Assert-CveFetchPage -CveData $cveData -StartIndex $startIndex
 
         Store-CVEInCSV -CVERecords $cveData -CsvFolder $CsvFolder
 
         $totalResults = $cveData.totalResults
-        $startIndex += $cveData.vulnerabilities.Count
+        $startIndex += $pageCount
         $requestCount++
         Start-Sleep -Seconds 1
     }
 }
 
 # --- Run
-Create-LocalCVERepository
+if ($MyInvocation.InvocationName -ne '.') {
+    Create-LocalCVERepository
+}
