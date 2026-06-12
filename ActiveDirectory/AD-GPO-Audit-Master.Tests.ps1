@@ -52,12 +52,47 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
       $needsExpand = -not (Test-Path -LiteralPath $marker)
       if (-not $needsExpand) {
         $zipUtc = (Get-Item -LiteralPath $ZipPath).LastWriteTimeUtc
-        $markerUtc = (Get-Item -LiteralPath $marker).LastWriteTimeUtc
-        if ($zipUtc -gt $markerUtc) { $needsExpand = $true }
+        $markerItem = Get-Item -LiteralPath $marker -ErrorAction SilentlyContinue
+        if ($markerItem) {
+          if ($zipUtc -gt $markerItem.LastWriteTimeUtc) { $needsExpand = $true }
+        } else {
+          $needsExpand = $true
+        }
       }
       if ($needsExpand) {
+        Get-ChildItem -LiteralPath $DestinationFolder -Force |
+          Where-Object { $_.Name -ne '.expanded.marker' } |
+          Remove-Item -Recurse -Force -ErrorAction Stop
         Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
         Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
+      }
+    }
+  }
+
+  It 'removes files dropped from a newer zip before re-expanding' {
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ("gpo-expand-test-{0}" -f [guid]::NewGuid())
+    $zipPath = Join-Path $root 'template.zip'
+    $dest = Join-Path $root 'extracted'
+    try {
+      New-Item -ItemType Directory -Path $root -Force | Out-Null
+      'keep-me' | Set-Content -LiteralPath (Join-Path $root 'keep.txt') -Encoding UTF8
+      'drop-me' | Set-Content -LiteralPath (Join-Path $root 'removed.txt') -Encoding UTF8
+      Compress-Archive -Path @(
+        (Join-Path $root 'keep.txt'),
+        (Join-Path $root 'removed.txt')
+      ) -DestinationPath $zipPath -Force
+      Expand-ZipIfNeededForTest -ZipPath $zipPath -DestinationFolder $dest
+      Test-Path -LiteralPath (Join-Path $dest 'removed.txt') | Should -BeTrue
+
+      Start-Sleep -Seconds 2
+      Remove-Item -LiteralPath (Join-Path $root 'removed.txt') -Force
+      Compress-Archive -Path (Join-Path $root 'keep.txt') -DestinationPath $zipPath -Force
+      Expand-ZipIfNeededForTest -ZipPath $zipPath -DestinationFolder $dest
+      Test-Path -LiteralPath (Join-Path $dest 'removed.txt') | Should -BeFalse
+      (Get-Content -LiteralPath (Join-Path $dest 'keep.txt') -Raw).Trim() | Should -Be 'keep-me'
+    } finally {
+      if (Test-Path -LiteralPath $root) {
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
       }
     }
   }

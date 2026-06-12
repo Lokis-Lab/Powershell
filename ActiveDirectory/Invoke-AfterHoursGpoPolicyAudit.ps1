@@ -287,10 +287,17 @@ function Expand-ZipIfNeeded {
   $needsExpand = -not (Test-Path -LiteralPath $marker)
   if (-not $needsExpand) {
     $zipUtc = (Get-Item -LiteralPath $ZipPath).LastWriteTimeUtc
-    $markerUtc = (Get-Item -LiteralPath $marker).LastWriteTimeUtc
-    if ($zipUtc -gt $markerUtc) { $needsExpand = $true }
+    $markerItem = Get-Item -LiteralPath $marker -ErrorAction SilentlyContinue
+    if ($markerItem) {
+      if ($zipUtc -gt $markerItem.LastWriteTimeUtc) { $needsExpand = $true }
+    } else {
+      $needsExpand = $true
+    }
   }
   if ($needsExpand) {
+    Get-ChildItem -LiteralPath $DestinationFolder -Force |
+      Where-Object { $_.Name -ne '.expanded.marker' } |
+      Remove-Item -Recurse -Force -ErrorAction Stop
     Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
     Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
   }

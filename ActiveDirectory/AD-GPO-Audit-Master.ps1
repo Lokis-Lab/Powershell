@@ -1368,10 +1368,18 @@ function Invoke-XmlExport {
   $hasPS7 = $PSVersionTable.PSVersion.Major -ge 7
   $xmlPaths = @()
   $domDns = $script:GpoAuditDomainDns
+  $ps7SkipEdition = $hasPS7
 
   if ($hasPS7) {
     $xmlPaths = $gpos | ForEach-Object -Parallel {
       try {
+        if (-not (Get-Module -Name GroupPolicy -ErrorAction SilentlyContinue)) {
+          if ($using:ps7SkipEdition) {
+            Import-Module -Name GroupPolicy -SkipEditionCheck -ErrorAction Stop
+          } else {
+            Import-Module -Name GroupPolicy -ErrorAction Stop
+          }
+        }
         $safe = ($PSItem.DisplayName -replace '[^\w\.-]+','_')
         $guid = ([string]$PSItem.Id).Trim('{}')
         $file = Join-Path $using:exportDir ("{0}_{1}.xml" -f $safe, $guid)
@@ -1399,6 +1407,10 @@ function Invoke-XmlExport {
   }
 
   $xmlPaths = @($xmlPaths | Where-Object { $_ } | Where-Object { Test-Path -LiteralPath $_ })
+  $expectedCount = @($gpos).Count
+  if ($xmlPaths.Count -ne $expectedCount) {
+    throw "GPO XML export incomplete: exported $($xmlPaths.Count) of $expectedCount GPO(s). See warnings above for per-GPO failures."
+  }
   Write-Host "Exported $($xmlPaths.Count) GPO XML files to: $exportDir" -ForegroundColor Cyan
 }
 

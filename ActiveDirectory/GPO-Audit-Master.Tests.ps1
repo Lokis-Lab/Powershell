@@ -100,4 +100,27 @@ Describe 'GPO-Audit-Master XML export uniqueness' {
     $functionAst | Should -Not -BeNullOrEmpty
     $functionAst.Body.Extent.Text | Should -Match "local-name\(\)='GPO'.*local-name\(\)='Name'"
   }
+
+  It 'imports GroupPolicy inside PS7 parallel export workers' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'ForEach-Object -Parallel'
+    $functionAst.Body.Extent.Text | Should -Match 'Import-Module -Name GroupPolicy'
+  }
+
+  It 'throws when XML export count does not match selected GPO count' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'GPO XML export incomplete'
+  }
 }
