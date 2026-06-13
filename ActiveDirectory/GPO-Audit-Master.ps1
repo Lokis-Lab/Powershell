@@ -392,6 +392,8 @@ function Invoke-XmlExport {
 
   $exportDir = Join-Path $OutDir 'Exports'
   Ensure-Folder -Path $exportDir
+  Get-ChildItem -LiteralPath $exportDir -Filter '*.xml' -File -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
 
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $allGpos = Get-GPO @gpoDom -All | Sort-Object DisplayName

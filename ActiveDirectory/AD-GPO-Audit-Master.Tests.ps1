@@ -36,6 +36,18 @@ Describe 'AD-GPO-Audit-Master GUI AD run handler' {
     $guiFunction.Body.Extent.Text | Should -Match 'OuFilterCb'
     $guiFunction.Body.Extent.Text | Should -Not -Match 'OuFilterTb'
   }
+
+  It 'filters disabled groups when IncludeDisabled is not set' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-AdAuditGroupInventory'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'if\s*\(-not\s*\$IncludeDisabled\)'
+    $functionAst.Body.Extent.Text | Should -Match '\$_.Enabled\s*-eq\s*\$true'
+  }
 }
 
 Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
