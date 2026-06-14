@@ -262,6 +262,34 @@ function New-SafeName {
   $InputString -replace '[^\w\.-]+', '_'
 }
 
+function Get-GpoGuidFromExportFile {
+  param(
+    [Parameter(Mandatory)][System.IO.FileInfo]$File,
+    [Parameter(Mandatory)][xml]$Xml
+  )
+
+  $gpoGuid = Get-FirstText -Node $Xml.DocumentElement -XPath ".//*[local-name()='GPO']/*[local-name()='Identifier']"
+  if (-not $gpoGuid) { $gpoGuid = Get-FirstText -Node $Xml.DocumentElement -XPath ".//*[local-name()='Identifier']" }
+  if (-not $gpoGuid -and $File.Name -match '_([0-9a-fA-F-]{36})\.xml$') { $gpoGuid = $Matches[1] }
+  if ($gpoGuid) { return ([string]$gpoGuid).Trim('{}') }
+  return $null
+}
+
+function Get-GpoFlattenCsvPath {
+  param(
+    [Parameter(Mandatory)][string]$FlattenDir,
+    [Parameter(Mandatory)][string]$GpoDisplayName,
+    [Parameter()][string]$GpoGuid
+  )
+
+  $safe = New-SafeName $GpoDisplayName
+  if ($GpoGuid) {
+    $guid = ([string]$GpoGuid).Trim('{}')
+    return Join-Path $FlattenDir ("Flatten_{0}_{1}.csv" -f $safe, $guid)
+  }
+  return Join-Path $FlattenDir ("Flatten_{0}.csv" -f $safe)
+}
+
 
 # AD Audit Master function library. Dot-source via AD-Audit-Master.ps1 or AD-GPO-Audit-Master.ps1.
 function Get-AdAuditCanonicalPath {
@@ -1209,8 +1237,9 @@ function Invoke-GpoAuditMasterGuiAction {
           Ensure-Folder -Path (Split-Path -Parent $choices.ComparePath -ErrorAction SilentlyContinue)
           Invoke-XmlExport -OutDir $choices.OutDir -Throttle $choices.Throttle -IncludeGpoName @($choices.Gpo1, $choices.Gpo2)
           Invoke-FlattenXml -OutDir $choices.OutDir
-          $leftCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo1))
-          $rightCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo2))
+          $flattenDir = Join-Path $choices.OutDir 'Flattened'
+          $leftCsv = Get-GpoFlattenCsvPath -FlattenDir $flattenDir -GpoDisplayName $choices.Gpo1 -GpoGuid $choices.Gpo1Id
+          $rightCsv = Get-GpoFlattenCsvPath -FlattenDir $flattenDir -GpoDisplayName $choices.Gpo2 -GpoGuid $choices.Gpo2Id
           Invoke-FlattenGpoCompare -LeftCsv $leftCsv -RightCsv $rightCsv -OutCsv $choices.ComparePath
           $statusText = "Done: $($choices.ComparePath)"
         }
@@ -1356,6 +1385,9 @@ function Invoke-XmlExport {
 
   $exportDir = Join-Path $OutDir 'Exports'
   Ensure-Folder -Path $exportDir
+  Get-ChildItem -LiteralPath $exportDir -Filter *.xml -File -ErrorAction SilentlyContinue | ForEach-Object {
+    Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop
+  }
 
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $allGpos = Get-GPO @gpoDom -All | Sort-Object DisplayName
@@ -1399,6 +1431,9 @@ function Invoke-XmlExport {
   }
 
   $xmlPaths = @($xmlPaths | Where-Object { $_ } | Where-Object { Test-Path -LiteralPath $_ })
+  if ($xmlPaths.Count -eq 0) {
+    throw "No GPO XML files were exported successfully."
+  }
   Write-Host "Exported $($xmlPaths.Count) GPO XML files to: $exportDir" -ForegroundColor Cyan
 }
 
@@ -2246,7 +2281,8 @@ function Invoke-FlattenXml {
     }
     $counts += $c
 
-    $flattenPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f (New-SafeName $gpo))
+    $gpoGuid = Get-GpoGuidFromExportFile -File $f -Xml $xml
+    $flattenPath = Get-GpoFlattenCsvPath -FlattenDir $flattenDir -GpoDisplayName $gpo -GpoGuid $gpoGuid
     $rows | Sort-Object GPO,Scope,Extension,Category,Setting | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $flattenPath
 
     foreach ($r in $rows) { [void]$allRows.Add($r) }
@@ -2491,11 +2527,12 @@ function Show-GpoCompareDialog {
   Add-Type -AssemblyName System.Windows.Forms
   Add-Type -AssemblyName System.Drawing
 
-  $gpos = @()
+  $gpoList = @()
   try {
     Ensure-GpoAuditAdContextInitialized
     $gpoDom = Get-GpoAuditGpoDomainSplat
-    $gpos = Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName | ForEach-Object { $_.DisplayName }
+    $gpoList = @(Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName)
+    $gpos = $gpoList | ForEach-Object { $_.DisplayName }
   } catch {
     [System.Windows.Forms.MessageBox]::Show("Could not load GPO list: $($_.Exception.Message)", "GPO Compare", "OK", "Error")
     return $null
@@ -2649,9 +2686,14 @@ function Show-GpoCompareDialog {
   $comparePath = $tbDiff.Text.Trim()
   if ([string]::IsNullOrWhiteSpace($comparePath)) { $comparePath = $defaultDiffPath }
 
+  $gpo1Obj = $gpoList | Where-Object { $_.DisplayName -eq $gpo1 } | Select-Object -First 1
+  $gpo2Obj = $gpoList | Where-Object { $_.DisplayName -eq $gpo2 } | Select-Object -First 1
+
   @{
     Gpo1        = $gpo1
     Gpo2        = $gpo2
+    Gpo1Id      = $gpo1Obj.Id
+    Gpo2Id      = $gpo2Obj.Id
     OutDir      = $outDir
     Throttle    = [int]$numThrottle.Value
     ComparePath = $comparePath
