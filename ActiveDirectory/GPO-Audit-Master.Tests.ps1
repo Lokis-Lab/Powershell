@@ -100,4 +100,16 @@ Describe 'GPO-Audit-Master XML export uniqueness' {
     $functionAst | Should -Not -BeNullOrEmpty
     $functionAst.Body.Extent.Text | Should -Match "local-name\(\)='GPO'.*local-name\(\)='Name'"
   }
+
+  It 'clears stale XML exports before writing new files' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match "Filter '\*\.xml'"
+    $functionAst.Body.Extent.Text | Should -Match 'Remove-Item'
+  }
 }
