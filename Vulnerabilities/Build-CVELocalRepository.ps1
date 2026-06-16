@@ -46,6 +46,51 @@ function Fetch-CVERecords {
 }
 
 # --- Function: Store CVEs to CSV (split by 1M rows)
+function Get-CveSyncStatePath {
+    param([Parameter(Mandatory)][string]$CsvFolder)
+    Join-Path $CsvFolder '.cve_sync_state.json'
+}
+
+function Read-CveSyncState {
+    param([Parameter(Mandatory)][string]$CsvFolder)
+
+    $path = Get-CveSyncStatePath -CsvFolder $CsvFolder
+    if (-not (Test-Path -LiteralPath $path)) {
+        return [pscustomobject]@{ startIndex = 0; totalResults = $null }
+    }
+
+    try {
+        $state = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        return [pscustomobject]@{
+            startIndex    = [int]$state.startIndex
+            totalResults  = if ($null -ne $state.totalResults) { [int]$state.totalResults } else { $null }
+        }
+    } catch {
+        Write-Warning "Ignoring invalid CVE sync state at ${path}: $($_.Exception.Message)"
+        return [pscustomobject]@{ startIndex = 0; totalResults = $null }
+    }
+}
+
+function Write-CveSyncState {
+    param(
+        [Parameter(Mandatory)][string]$CsvFolder,
+        [Parameter(Mandatory)][int]$StartIndex,
+        [Parameter(Mandatory)][int]$TotalResults
+    )
+
+    $obj = [ordered]@{
+        startIndex   = $StartIndex
+        totalResults = $TotalResults
+        updatedAt    = (Get-Date).ToString('o')
+    }
+    $obj | ConvertTo-Json | Set-Content -LiteralPath (Get-CveSyncStatePath -CsvFolder $CsvFolder) -Encoding utf8
+}
+
+function Clear-CveSyncState {
+    param([Parameter(Mandatory)][string]$CsvFolder)
+    Remove-Item -LiteralPath (Get-CveSyncStatePath -CsvFolder $CsvFolder) -Force -ErrorAction SilentlyContinue
+}
+
 function Store-CVEInCSV {
     param(
         [Parameter(Mandatory=$true)][PSObject]$CVERecords,
@@ -111,9 +156,15 @@ function Store-CVEInCSV {
 
 # --- Function: Build local CVE repository
 function Create-LocalCVERepository {
-    $startIndex = 0
-    $totalResults = 1
+    $state = Read-CveSyncState -CsvFolder $CsvFolder
+    $startIndex = $state.startIndex
+    $totalResults = if ($state.totalResults) { [int]$state.totalResults } else { 1 }
     $requestCount = 0
+
+    if ($state.totalResults -and $startIndex -ge $totalResults) {
+        Write-Host "CVE repository already synced ($startIndex / $totalResults records). Delete CSV files and .cve_sync_state.json to rebuild." -ForegroundColor Green
+        return
+    }
 
     while ($startIndex -lt $totalResults) {
         if ($requestCount -ge 50) {
@@ -123,16 +174,29 @@ function Create-LocalCVERepository {
         }
 
         $cveData = Fetch-CVERecords -StartIndex $startIndex
-        if (-not $cveData) { break }
+        if (-not $cveData) {
+            throw "Failed to fetch CVE records at startIndex ${startIndex}. Sync state preserved for resume."
+        }
+
+        $pageCount = @($cveData.vulnerabilities).Count
+        if ($pageCount -eq 0) {
+            throw "NVD API returned zero vulnerabilities at startIndex ${startIndex} (totalResults=$($cveData.totalResults)). Aborting to avoid an infinite loop."
+        }
 
         Store-CVEInCSV -CVERecords $cveData -CsvFolder $CsvFolder
 
-        $totalResults = $cveData.totalResults
-        $startIndex += $cveData.vulnerabilities.Count
+        $totalResults = [int]$cveData.totalResults
+        $startIndex += $pageCount
+        Write-CveSyncState -CsvFolder $CsvFolder -StartIndex $startIndex -TotalResults $totalResults
         $requestCount++
         Start-Sleep -Seconds 1
     }
+
+    Clear-CveSyncState -CsvFolder $CsvFolder
+    Write-Host "CVE repository sync complete ($totalResults records)." -ForegroundColor Green
 }
 
 # --- Run
-Create-LocalCVERepository
+if ($MyInvocation.InvocationName -match '\.ps1$') {
+    Create-LocalCVERepository
+}
