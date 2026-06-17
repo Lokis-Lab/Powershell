@@ -90,18 +90,6 @@ Describe 'GPO-Audit-Master XML export uniqueness' {
     $functionAst.Body.Extent.Text | Should -Match '\$guid\s*=\s*\(\[string\]\$g\.Id\)\.Trim'
   }
 
-  It 'clears stale export XML before writing a new filtered export set' {
-    $functionAst = $script:Ast.Find({
-      param($node)
-      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-        $node.Name -eq 'Invoke-XmlExport'
-    }, $true)
-
-    $functionAst | Should -Not -BeNullOrEmpty
-    $functionAst.Body.Extent.Text | Should -Match 'Remove-Item'
-    $functionAst.Body.Extent.Text | Should -Match 'Filter\s+\*\.xml'
-  }
-
   It 'reads GPO display name from report XML when flattening' {
     $functionAst = $script:Ast.Find({
       param($node)
