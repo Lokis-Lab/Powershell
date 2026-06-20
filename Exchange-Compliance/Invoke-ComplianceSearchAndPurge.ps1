@@ -107,6 +107,18 @@ Read-Host -Prompt "Finished! Press Enter to continue"
 $softPurgeResponse = Read-Host "Do you want to perform a soft purge of the emails found in '$ComplianceName'? (Y/N) [WARNING: This PERMANENTLY deletes emails]"
 if ($softPurgeResponse -eq 'Y') {
     New-ComplianceSearchAction -Identity $ComplianceName -Purge -PurgeType SoftDelete
+    Write-Host "Soft purge started. This may take several minutes..."
+
+    $action = Get-ComplianceSearchAction -Identity $ComplianceName
+    while ($action.Status -ne 'Completed') {
+        if ($action.Status -in @('Failed', 'Stopped')) {
+            throw "Soft purge failed with status: $($action.Status)"
+        }
+        Write-Host "Purge status: $($action.Status)..."
+        Start-Sleep -Seconds 30
+        $action = Get-ComplianceSearchAction -Identity $ComplianceName
+    }
+
     Write-Host "Soft purge completed." -ForegroundColor Red
 } else {
     Write-Host "Purge operation cancelled." -ForegroundColor Yellow
