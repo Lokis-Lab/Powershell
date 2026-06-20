@@ -36,6 +36,17 @@ Describe 'AD-GPO-Audit-Master GUI AD run handler' {
     $guiFunction.Body.Extent.Text | Should -Match 'OuFilterCb'
     $guiFunction.Body.Extent.Text | Should -Not -Match 'OuFilterTb'
   }
+
+  It 'includes GPO GUID in per-GPO flatten CSV filenames' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-GpoFlattenCsvPath'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}_\{1\}\.csv'
+  }
 }
 
 Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
