@@ -93,6 +93,9 @@ Write-Host "Compliance search started. This may take 5+ minutes..."
 # --- Poll search status until completed
 $status = Get-ComplianceSearch -Identity $ComplianceName
 while ($status.Status -ne 'Completed') {
+    if ($status.Status -in @('Failed', 'Stopped')) {
+        throw "Compliance search failed with status: $($status.Status)"
+    }
     Write-Host "Search status: $($status.Status)..."
     Start-Sleep -Seconds 30
     $status = Get-ComplianceSearch -Identity $ComplianceName

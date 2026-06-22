@@ -47,6 +47,39 @@ Describe 'AD-GPO-Audit-Master GUI AD run handler' {
     $functionAst | Should -Not -BeNullOrEmpty
     $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}_\{1\}\.csv'
   }
+
+  It 'opens the two-GPO compare picker without forcing the Active Directory module' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Show-GpoCompareDialog'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+
+    $commandNames = @(
+      $functionAst.Body.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.CommandAst]
+      }, $true) | ForEach-Object { $_.GetCommandName() } | Where-Object { $_ }
+    )
+
+    $commandNames | Should -Contain 'Get-GpoAuditGpoDomainSplat'
+    $commandNames | Should -Contain 'Get-GPO'
+    $commandNames | Should -Not -Contain 'Ensure-GpoAuditAdContextInitialized'
+    $commandNames | Should -Not -Contain 'Initialize-GpoAuditAdContext'
+  }
+
+  It 'uses lazy domain targeting for GPO category runs without initializing AD' {
+    $guiFunction = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Show-AdGpoAuditMasterMainGui'
+    }, $true)
+
+    $guiFunction | Should -Not -BeNullOrEmpty
+    $guiFunction.Body.Extent.Text | Should -Match 'Set-GpoAuditRequestedDomain'
+  }
 }
 
 Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
