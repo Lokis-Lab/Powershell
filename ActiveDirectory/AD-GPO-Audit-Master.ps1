@@ -2512,7 +2512,6 @@ function Show-GpoCompareDialog {
 
   $gpos = @()
   try {
-    Ensure-GpoAuditAdContextInitialized
     $gpoDom = Get-GpoAuditGpoDomainSplat
     $gpoList = @(Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName)
     $gpos = @($gpoList | ForEach-Object { $_.DisplayName })
@@ -3553,14 +3552,13 @@ function Show-AdGpoAuditMasterMainGui {
     $statusLabel.Text = 'Working...'
     [System.Windows.Forms.Application]::DoEvents()
     try {
-      if ($domainCb.SelectedItem) {
-        Initialize-AuditAdContext -DomainDnsName ([string]$domainCb.SelectedItem)
-      } else {
-        Initialize-AuditAdContext
-      }
-
       $state = $script:masterPanelState
       if ($cbCategory.SelectedIndex -eq 0) {
+        if ($domainCb.SelectedItem) {
+          Initialize-AuditAdContext -DomainDnsName ([string]$domainCb.SelectedItem)
+        } else {
+          Initialize-AuditAdContext
+        }
         $outDir = if ($state.OutDirTb.Text.Trim()) { $state.OutDirTb.Text.Trim() } else { $DefaultOutDir }
         $ouPatterns = $null
         if ($state.OuFilterCb -and $state.OuFilterCb.Text.Trim()) {
@@ -3590,6 +3588,9 @@ function Show-AdGpoAuditMasterMainGui {
           Start-Process -FilePath 'explorer.exe' -ArgumentList $result.ReportsDir
         }
       } else {
+        if ($domainCb.SelectedItem) {
+          Set-GpoAuditRequestedDomain -DomainDnsName ([string]$domainCb.SelectedItem)
+        }
         Import-GroupPolicyModule
         $statusLabel.Text = Invoke-GpoAuditMasterGuiAction -ActionIndex $cbAction.SelectedIndex `
           -State $state -DefaultOutDir $DefaultOutDir -DefaultThrottle $DefaultThrottle `
