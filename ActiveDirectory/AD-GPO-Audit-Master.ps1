@@ -485,6 +485,9 @@ function Get-AdAuditGroupInventory {
   }
 
   $all = @($byGuid.Values)
+  if (-not $IncludeDisabled) {
+    $all = @($all | Where-Object { $_.Enabled -eq $true })
+  }
   if ($plan.PostFilterPatterns -and $plan.PostFilterPatterns.Count -gt 0) {
     $all = @($all | Where-Object { Test-AdAuditOuNameFilter -AdObject $_ -Patterns $plan.PostFilterPatterns })
   }
@@ -1356,6 +1359,8 @@ function Invoke-XmlExport {
 
   $exportDir = Join-Path $OutDir 'Exports'
   Ensure-Folder -Path $exportDir
+  Get-ChildItem -LiteralPath $exportDir -Filter '*.xml' -File -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
 
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $allGpos = Get-GPO @gpoDom -All | Sort-Object DisplayName
@@ -1399,6 +1404,9 @@ function Invoke-XmlExport {
   }
 
   $xmlPaths = @($xmlPaths | Where-Object { $_ } | Where-Object { Test-Path -LiteralPath $_ })
+  if ($xmlPaths.Count -eq 0) {
+    throw "No GPO XML files were exported successfully."
+  }
   Write-Host "Exported $($xmlPaths.Count) GPO XML files to: $exportDir" -ForegroundColor Cyan
 }
 

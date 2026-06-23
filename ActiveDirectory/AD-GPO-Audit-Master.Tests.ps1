@@ -38,6 +38,47 @@ Describe 'AD-GPO-Audit-Master GUI AD run handler' {
   }
 }
 
+Describe 'AD-GPO-Audit-Master inventory and export hygiene' {
+  BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot 'AD-GPO-Audit-Master.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+      throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+  }
+
+  It 'filters disabled groups from inventory unless IncludeDisabled is set' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-AdAuditGroupInventory'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'if \(-not \$IncludeDisabled\)'
+    $functionAst.Body.Extent.Text | Should -Match 'Enabled -eq \$true'
+  }
+
+  It 'clears stale XML exports before writing new files' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match "Filter '\*\.xml'"
+    $functionAst.Body.Extent.Text | Should -Match 'No GPO XML files were exported successfully'
+  }
+}
+
 Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
   BeforeAll {
     function script:Expand-ZipIfNeededForTest {
