@@ -52,10 +52,20 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
       $needsExpand = -not (Test-Path -LiteralPath $marker)
       if (-not $needsExpand) {
         $zipUtc = (Get-Item -LiteralPath $ZipPath).LastWriteTimeUtc
-        $markerUtc = (Get-Item -LiteralPath $marker).LastWriteTimeUtc
-        if ($zipUtc -gt $markerUtc) { $needsExpand = $true }
+        if (Test-Path -LiteralPath $marker) {
+          $markerUtc = (Get-Item -LiteralPath $marker).LastWriteTimeUtc
+          if ($zipUtc -gt $markerUtc) { $needsExpand = $true }
+        } else {
+          $needsExpand = $true
+        }
       }
       if ($needsExpand) {
+        if (Test-Path -LiteralPath $DestinationFolder) {
+          Get-ChildItem -LiteralPath $DestinationFolder -Force | Remove-Item -Recurse -Force
+        }
+        if (-not (Test-Path -LiteralPath $DestinationFolder)) {
+          New-Item -Path $DestinationFolder -ItemType Directory -Force | Out-Null
+        }
         Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
         Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
       }
@@ -78,6 +88,33 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
       Compress-Archive -Path (Join-Path $root 'payload.txt') -DestinationPath $zipPath -Force
       Expand-ZipIfNeededForTest -ZipPath $zipPath -DestinationFolder $dest
       (Get-Content -LiteralPath (Join-Path $dest 'payload.txt') -Raw).Trim() | Should -Be 'version-2'
+    } finally {
+      if (Test-Path -LiteralPath $root) {
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+      }
+    }
+  }
+
+  It 'removes stale extracted files when the zip is replaced' {
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ("gpo-expand-stale-{0}" -f [guid]::NewGuid())
+    $zipPath = Join-Path $root 'template.zip'
+    $dest = Join-Path $root 'extracted'
+    try {
+      New-Item -ItemType Directory -Path $root -Force | Out-Null
+      'keep-me' | Set-Content -LiteralPath (Join-Path $root 'keep.txt') -Encoding UTF8
+      'drop-me' | Set-Content -LiteralPath (Join-Path $root 'drop.txt') -Encoding UTF8
+      Compress-Archive -Path @(
+        (Join-Path $root 'keep.txt'),
+        (Join-Path $root 'drop.txt')
+      ) -DestinationPath $zipPath -Force
+      Expand-ZipIfNeededForTest -ZipPath $zipPath -DestinationFolder $dest
+      Test-Path -LiteralPath (Join-Path $dest 'drop.txt') | Should -BeTrue
+
+      Start-Sleep -Seconds 2
+      Compress-Archive -Path (Join-Path $root 'keep.txt') -DestinationPath $zipPath -Force
+      Expand-ZipIfNeededForTest -ZipPath $zipPath -DestinationFolder $dest
+      Test-Path -LiteralPath (Join-Path $dest 'keep.txt') | Should -BeTrue
+      Test-Path -LiteralPath (Join-Path $dest 'drop.txt') | Should -BeFalse
     } finally {
       if (Test-Path -LiteralPath $root) {
         Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue

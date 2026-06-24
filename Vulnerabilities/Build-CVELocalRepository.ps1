@@ -45,11 +45,30 @@ function Fetch-CVERecords {
     }
 }
 
+# --- Function: Load CVE IDs already stored on disk (idempotent re-runs)
+function Get-ExistingCveIds {
+    param([string]$CsvFolder)
+
+    $ids = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if (-not (Test-Path -Path $CsvFolder)) {
+        return $ids
+    }
+
+    Get-ChildItem -Path $CsvFolder -Filter 'cve_repository_*.csv' -File | Sort-Object Name | ForEach-Object {
+        Import-Csv -Path $_.FullName | ForEach-Object {
+            if ($_.id) { [void]$ids.Add($_.id) }
+        }
+    }
+
+    return $ids
+}
+
 # --- Function: Store CVEs to CSV (split by 1M rows)
 function Store-CVEInCSV {
     param(
         [Parameter(Mandatory=$true)][PSObject]$CVERecords,
-        [string]$CsvFolder
+        [string]$CsvFolder,
+        [System.Collections.Generic.HashSet[string]]$ExistingIds
     )
 
     if (-not (Test-Path -Path $CsvFolder)) {
@@ -88,6 +107,10 @@ function Store-CVEInCSV {
         $cveId = $cve.cve.id
         $publishedDate = $cve.cve.published
 
+        if ($ExistingIds.Contains($cveId)) {
+            continue
+        }
+
         if ([datetime]$publishedDate -gt [datetime]"2005-12-31") {
             if ($recordCount -ge 1000000) {
                 do {
@@ -103,6 +126,7 @@ function Store-CVEInCSV {
             }
 
             "$cveId,$publishedDate" | Add-Content -Path $currentCsvPath
+            [void]$ExistingIds.Add($cveId)
             Write-Host "Stored CVE $cveId ($publishedDate)"
             $recordCount++
         }
@@ -111,6 +135,11 @@ function Store-CVEInCSV {
 
 # --- Function: Build local CVE repository
 function Create-LocalCVERepository {
+    $existingIds = Get-ExistingCveIds -CsvFolder $CsvFolder
+    if ($existingIds.Count -gt 0) {
+        Write-Host ("Resuming CVE sync; {0} CVE IDs already stored." -f $existingIds.Count) -ForegroundColor DarkGray
+    }
+
     $startIndex = 0
     $totalResults = 1
     $requestCount = 0
@@ -123,12 +152,19 @@ function Create-LocalCVERepository {
         }
 
         $cveData = Fetch-CVERecords -StartIndex $startIndex
-        if (-not $cveData) { break }
+        if (-not $cveData) {
+            throw "Failed to fetch CVE records at startIndex ${startIndex}."
+        }
 
-        Store-CVEInCSV -CVERecords $cveData -CsvFolder $CsvFolder
+        $pageCount = @($cveData.vulnerabilities).Count
+        if ($pageCount -eq 0 -and $startIndex -lt $cveData.totalResults) {
+            throw "NVD API returned zero vulnerabilities at startIndex ${startIndex} (totalResults=$($cveData.totalResults))."
+        }
+
+        Store-CVEInCSV -CVERecords $cveData -CsvFolder $CsvFolder -ExistingIds $existingIds
 
         $totalResults = $cveData.totalResults
-        $startIndex += $cveData.vulnerabilities.Count
+        $startIndex += $pageCount
         $requestCount++
         Start-Sleep -Seconds 1
     }
