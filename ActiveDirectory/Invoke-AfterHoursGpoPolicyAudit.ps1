@@ -291,6 +291,10 @@ function Expand-ZipIfNeeded {
     if ($zipUtc -gt $markerUtc) { $needsExpand = $true }
   }
   if ($needsExpand) {
+    if (Test-Path -LiteralPath $DestinationFolder) {
+      Get-ChildItem -LiteralPath $DestinationFolder -Force | Remove-Item -Recurse -Force
+    }
+    Ensure-Directory -Path $DestinationFolder
     Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
     Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
   }
