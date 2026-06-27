@@ -41,6 +41,13 @@ function Calculate-DateDifference {
     return ($end - $start).Days
 }
 
+# --- Function: Escape double quotes for KQL field values
+function Escape-KqlFieldValue {
+    param([string]$Value)
+    if ($null -eq $Value) { return '' }
+    return ($Value -replace '"', '""')
+}
+
 # --- Function: Prompt for a compliance search name and handle conflicts
 function Prompt-ComplianceName {
     param ([string]$PromptMessage)
@@ -81,8 +88,10 @@ while ($true) {
 $Subject     = Read-Host "Enter the subject of the email"
 $SenderEmail = Read-Host "Enter the sender email address"
 
-# --- Build query string
-$queryString = "(Received:`"$StartDate..$EndDate`") AND (Subject:`"$Subject`") AND (from:`"$SenderEmail`")"
+# --- Build query string (escape quotes to prevent KQL injection widening scope)
+$safeSubject = Escape-KqlFieldValue -Value $Subject
+$safeSender  = Escape-KqlFieldValue -Value $SenderEmail
+$queryString = "(Received:`"$StartDate..$EndDate`") AND (Subject:`"$safeSubject`") AND (from:`"$safeSender`")"
 
 # --- Create and run the compliance search
 $Search = New-ComplianceSearch -Name $ComplianceName -ExchangeLocation All -ContentMatchQuery $queryString
@@ -93,6 +102,9 @@ Write-Host "Compliance search started. This may take 5+ minutes..."
 # --- Poll search status until completed
 $status = Get-ComplianceSearch -Identity $ComplianceName
 while ($status.Status -ne 'Completed') {
+    if ($status.Status -in @('Failed', 'Stopped')) {
+        throw "Compliance search failed with status: $($status.Status)"
+    }
     Write-Host "Search status: $($status.Status)..."
     Start-Sleep -Seconds 30
     $status = Get-ComplianceSearch -Identity $ComplianceName
@@ -106,7 +118,20 @@ Read-Host -Prompt "Finished! Press Enter to continue"
 # --- Prompt for optional purge
 $softPurgeResponse = Read-Host "Do you want to perform a soft purge of the emails found in '$ComplianceName'? (Y/N) [WARNING: This PERMANENTLY deletes emails]"
 if ($softPurgeResponse -eq 'Y') {
-    New-ComplianceSearchAction -Identity $ComplianceName -Purge -PurgeType SoftDelete
+    New-ComplianceSearchAction -SearchName $ComplianceName -Purge -PurgeType SoftDelete
+    Write-Host "Soft purge started. This may take several minutes..."
+
+    $purgeIdentity = "${ComplianceName}_Purge"
+    $action = Get-ComplianceSearchAction -Identity $purgeIdentity
+    while ($action.Status -ne 'Completed') {
+        if ($action.Status -in @('Failed', 'Stopped')) {
+            throw "Soft purge failed with status: $($action.Status)"
+        }
+        Write-Host "Purge status: $($action.Status)..."
+        Start-Sleep -Seconds 30
+        $action = Get-ComplianceSearchAction -Identity $purgeIdentity
+    }
+
     Write-Host "Soft purge completed." -ForegroundColor Red
 } else {
     Write-Host "Purge operation cancelled." -ForegroundColor Yellow
