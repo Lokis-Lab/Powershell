@@ -77,6 +77,17 @@ Describe 'AD-GPO-Audit-Master inventory and export hygiene' {
     $functionAst.Body.Extent.Text | Should -Match "Filter '\*\.xml'"
     $functionAst.Body.Extent.Text | Should -Match 'No GPO XML files were exported successfully'
   }
+
+  It 'includes GPO GUID in per-GPO flatten CSV filenames' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-GpoFlattenCsvPath'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}_\{1\}\.csv'
+  }
 }
 
 Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {

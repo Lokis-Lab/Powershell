@@ -262,6 +262,20 @@ function New-SafeName {
   $InputString -replace '[^\w\.-]+', '_'
 }
 
+function Get-GpoFlattenCsvPath {
+  param(
+    [Parameter(Mandatory)][string]$FlattenDir,
+    [Parameter(Mandatory)][string]$GpoName,
+    [string]$GpoGuid
+  )
+  $safe = New-SafeName $GpoName
+  if (-not [string]::IsNullOrWhiteSpace($GpoGuid)) {
+    $guid = ([string]$GpoGuid).Trim('{}')
+    return Join-Path $FlattenDir ("Flatten_{0}_{1}.csv" -f $safe, $guid)
+  }
+  return Join-Path $FlattenDir ("Flatten_{0}.csv" -f $safe)
+}
+
 
 # AD Audit Master function library. Dot-source via AD-Audit-Master.ps1 or AD-GPO-Audit-Master.ps1.
 function Get-AdAuditCanonicalPath {
@@ -1212,8 +1226,8 @@ function Invoke-GpoAuditMasterGuiAction {
           Ensure-Folder -Path (Split-Path -Parent $choices.ComparePath -ErrorAction SilentlyContinue)
           Invoke-XmlExport -OutDir $choices.OutDir -Throttle $choices.Throttle -IncludeGpoName @($choices.Gpo1, $choices.Gpo2)
           Invoke-FlattenXml -OutDir $choices.OutDir
-          $leftCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo1))
-          $rightCsv = Join-Path (Join-Path $choices.OutDir 'Flattened') ("Flatten_{0}.csv" -f (New-SafeName $choices.Gpo2))
+          $leftCsv = Get-GpoFlattenCsvPath -FlattenDir (Join-Path $choices.OutDir 'Flattened') -GpoName $choices.Gpo1 -GpoGuid $choices.Gpo1Id
+          $rightCsv = Get-GpoFlattenCsvPath -FlattenDir (Join-Path $choices.OutDir 'Flattened') -GpoName $choices.Gpo2 -GpoGuid $choices.Gpo2Id
           Invoke-FlattenGpoCompare -LeftCsv $leftCsv -RightCsv $rightCsv -OutCsv $choices.ComparePath
           $statusText = "Done: $($choices.ComparePath)"
         }
@@ -2238,6 +2252,11 @@ function Invoke-FlattenXml {
       $gpo = ($dnSafe -replace '_', ' ')
     }
 
+    $gpoGuid = Get-FirstText -Node $xml.DocumentElement -XPath ".//*[local-name()='GPO']/*[local-name()='Identifier']"
+    if (-not $gpoGuid -and $f.Name -match '_[0-9a-fA-F-]{36}\.xml$') {
+      $gpoGuid = ($f.BaseName -replace '^.*_', '')
+    }
+
     $rows = Get-AllFlattenedRows -Xml $xml -Gpo $gpo
 
     $c = [pscustomobject]@{
@@ -2254,7 +2273,7 @@ function Invoke-FlattenXml {
     }
     $counts += $c
 
-    $flattenPath = Join-Path $flattenDir ("Flatten_{0}.csv" -f (New-SafeName $gpo))
+    $flattenPath = Get-GpoFlattenCsvPath -FlattenDir $flattenDir -GpoName $gpo -GpoGuid $gpoGuid
     $rows | Sort-Object GPO,Scope,Extension,Category,Setting | Export-Csv -NoTypeInformation -Encoding UTF8 -Path $flattenPath
 
     foreach ($r in $rows) { [void]$allRows.Add($r) }
@@ -2501,9 +2520,9 @@ function Show-GpoCompareDialog {
 
   $gpos = @()
   try {
-    Ensure-GpoAuditAdContextInitialized
     $gpoDom = Get-GpoAuditGpoDomainSplat
-    $gpos = Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName | ForEach-Object { $_.DisplayName }
+    $gpoList = @(Get-GPO @gpoDom -All -ErrorAction Stop | Sort-Object DisplayName)
+    $gpos = @($gpoList | ForEach-Object { $_.DisplayName })
   } catch {
     [System.Windows.Forms.MessageBox]::Show("Could not load GPO list: $($_.Exception.Message)", "GPO Compare", "OK", "Error")
     return $null
@@ -2657,9 +2676,14 @@ function Show-GpoCompareDialog {
   $comparePath = $tbDiff.Text.Trim()
   if ([string]::IsNullOrWhiteSpace($comparePath)) { $comparePath = $defaultDiffPath }
 
+  $gpoObj1 = $gpoList | Where-Object { $_.DisplayName -eq $gpo1 } | Select-Object -First 1
+  $gpoObj2 = $gpoList | Where-Object { $_.DisplayName -eq $gpo2 } | Select-Object -First 1
+
   @{
     Gpo1        = $gpo1
     Gpo2        = $gpo2
+    Gpo1Id      = if ($gpoObj1) { [string]$gpoObj1.Id } else { $null }
+    Gpo2Id      = if ($gpoObj2) { [string]$gpoObj2.Id } else { $null }
     OutDir      = $outDir
     Throttle    = [int]$numThrottle.Value
     ComparePath = $comparePath
@@ -3536,14 +3560,13 @@ function Show-AdGpoAuditMasterMainGui {
     $statusLabel.Text = 'Working...'
     [System.Windows.Forms.Application]::DoEvents()
     try {
-      if ($domainCb.SelectedItem) {
-        Initialize-AuditAdContext -DomainDnsName ([string]$domainCb.SelectedItem)
-      } else {
-        Initialize-AuditAdContext
-      }
-
       $state = $script:masterPanelState
       if ($cbCategory.SelectedIndex -eq 0) {
+        if ($domainCb.SelectedItem) {
+          Initialize-AuditAdContext -DomainDnsName ([string]$domainCb.SelectedItem)
+        } else {
+          Initialize-AuditAdContext
+        }
         $outDir = if ($state.OutDirTb.Text.Trim()) { $state.OutDirTb.Text.Trim() } else { $DefaultOutDir }
         $ouPatterns = $null
         if ($state.OuFilterCb -and $state.OuFilterCb.Text.Trim()) {
@@ -3573,6 +3596,9 @@ function Show-AdGpoAuditMasterMainGui {
           Start-Process -FilePath 'explorer.exe' -ArgumentList $result.ReportsDir
         }
       } else {
+        if ($domainCb.SelectedItem) {
+          Set-GpoAuditRequestedDomain -DomainDnsName ([string]$domainCb.SelectedItem)
+        }
         Import-GroupPolicyModule
         $statusLabel.Text = Invoke-GpoAuditMasterGuiAction -ActionIndex $cbAction.SelectedIndex `
           -State $state -DefaultOutDir $DefaultOutDir -DefaultThrottle $DefaultThrottle `
