@@ -34,8 +34,9 @@ function Get-SecretValue {
     }
 
     # 2. Environment variable
-    if ($env:$Name) {
-        return $env:$Name
+    $envValue = [Environment]::GetEnvironmentVariable($Name)
+    if ($envValue) {
+        return $envValue
     }
 
     # 3. SecretManagement vault (optional)
