@@ -85,3 +85,43 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
     }
   }
 }
+
+Describe 'AD-GPO-Audit-Master flatten CSV uniqueness' {
+  BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot 'AD-GPO-Audit-Master.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+      throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+  }
+
+  It 'filters disabled groups when IncludeDisabled is not set' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-AdAuditGroupInventory'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'IncludeDisabled'
+    $functionAst.Body.Extent.Text | Should -Match '\$_.Enabled -eq \$true'
+  }
+
+  It 'includes GPO GUID in per-GPO flatten CSV filenames' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-GpoFlattenCsvPath'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}_\{1\}\.csv'
+  }
+}

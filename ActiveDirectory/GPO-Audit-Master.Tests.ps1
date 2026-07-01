@@ -101,5 +101,17 @@ Describe 'GPO-Audit-Master XML export uniqueness' {
 
     $functionAst | Should -Not -BeNullOrEmpty
     $functionAst.Body.Extent.Text | Should -Match "local-name\(\)='GPO'.*local-name\(\)='Name'"
+    $functionAst.Body.Extent.Text | Should -Match 'Get-GpoFlattenCsvPath'
+  }
+
+  It 'includes GPO GUID in per-GPO flatten CSV filenames' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-GpoFlattenCsvPath'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}_\{1\}\.csv'
   }
 }
