@@ -43,9 +43,15 @@ $header = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json
 # --- Endpoints
 $MachinesUrl = "$ApiBase/api/machines"  # <-- switches with cloud
 
-# --- Devices
-$response = Invoke-RestMethod -Method Get -Uri $MachinesUrl -Headers $header -ErrorAction Stop
-$devices  = $response.value
+# --- Devices (follow @odata.nextLink to avoid silent truncation)
+$devices = [System.Collections.Generic.List[object]]::new()
+$nextUrl = $MachinesUrl
+while ($nextUrl) {
+  $response = Invoke-RestMethod -Method Get -Uri $nextUrl -Headers $header -ErrorAction Stop
+  if ($response.value) { $devices.AddRange(@($response.value)) }
+  $nextUrl = $response.'@odata.nextLink'
+}
+$devices = @($devices)
 
 # Optional filter by OS
 if ($OSPlatform) { $devices = $devices | Where-Object { $_.osPlatform -eq $OSPlatform } }
@@ -62,24 +68,38 @@ $devices | Select-Object id, computerDnsName, osPlatform, healthStatus, lastSeen
   Export-Csv -Path $DevicesCsvPath -NoTypeInformation -Encoding UTF8 -Force
 Write-Host "Devices exported to $DevicesCsvPath" -ForegroundColor Green
 
+# Reset vulnerabilities CSV so re-runs do not append to stale data
+if (Test-Path -LiteralPath $VulnerabilitiesCsvPath) {
+  Remove-Item -LiteralPath $VulnerabilitiesCsvPath -Force
+}
+
 # Per-device vulnerabilities
 foreach ($device in $devices) {
   Start-Sleep -Seconds 1
   $vulnUrl = "$ApiBase/api/machines/$($device.id)/vulnerabilities"  # <-- switches with cloud
 
   try {
-    $vulnResp = Invoke-RestMethod -Method Get -Uri $vulnUrl -Headers $header -ErrorAction Stop
-    if ($vulnResp -and $vulnResp.value) {
-      $vulnResp.value | ForEach-Object {
-        [PSCustomObject]@{
-          DeviceId        = $device.id
-          ComputerName    = $device.computerDnsName
-          VulnerabilityId = $_.id
-          Severity        = $_.severity
-          CveId           = if ($_.cveId) { $_.cveId } else { $_.id }
-          Title           = $_.name
+    $vulnRows = [System.Collections.Generic.List[object]]::new()
+    $vulnNextUrl = $vulnUrl
+    while ($vulnNextUrl) {
+      $vulnResp = Invoke-RestMethod -Method Get -Uri $vulnNextUrl -Headers $header -ErrorAction Stop
+      if ($vulnResp -and $vulnResp.value) {
+        foreach ($vuln in $vulnResp.value) {
+          $vulnRows.Add([PSCustomObject]@{
+            DeviceId        = $device.id
+            ComputerName    = $device.computerDnsName
+            VulnerabilityId = $vuln.id
+            Severity        = $vuln.severity
+            CveId           = if ($vuln.cveId) { $vuln.cveId } else { $vuln.id }
+            Title           = $vuln.name
+          })
         }
-      } | Export-Csv -Path $VulnerabilitiesCsvPath -NoTypeInformation -Encoding UTF8 -Append
+      }
+      $vulnNextUrl = $vulnResp.'@odata.nextLink'
+    }
+
+    if ($vulnRows.Count -gt 0) {
+      $vulnRows | Export-Csv -Path $VulnerabilitiesCsvPath -NoTypeInformation -Encoding UTF8 -Append
       Write-Host "Vulnerabilities for $($device.computerDnsName) exported." -ForegroundColor Yellow
     }
   } catch {

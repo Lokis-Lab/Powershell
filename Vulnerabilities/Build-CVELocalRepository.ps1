@@ -123,12 +123,23 @@ function Create-LocalCVERepository {
         }
 
         $cveData = Fetch-CVERecords -StartIndex $startIndex
-        if (-not $cveData) { break }
+        if (-not $cveData) {
+            throw "Failed to fetch CVE records at startIndex ${startIndex}."
+        }
+
+        $pageCount = if ($null -eq $cveData.vulnerabilities) {
+            0
+        } else {
+            @($cveData.vulnerabilities).Count
+        }
+        if ($pageCount -eq 0 -and $startIndex -lt $cveData.totalResults) {
+            throw "NVD API returned zero vulnerabilities at startIndex ${startIndex} (totalResults=$($cveData.totalResults))."
+        }
 
         Store-CVEInCSV -CVERecords $cveData -CsvFolder $CsvFolder
 
         $totalResults = $cveData.totalResults
-        $startIndex += $cveData.vulnerabilities.Count
+        $startIndex += $pageCount
         $requestCount++
         Start-Sleep -Seconds 1
     }
