@@ -95,7 +95,7 @@ function Get-LastSignIn {
     if ($signIn) { return $signIn.createdDateTime }
     else { return $null }
   } catch {
-    Write-Warning "Sign-in query failed for $UserPrincipalName: $($_.Exception.Message)"
+    Write-Warning "Sign-in query failed for ${UserPrincipalName}: $($_.Exception.Message)"
     return $null
   }
 }
@@ -149,7 +149,7 @@ $idx = 0
 $total = $targetUsers.Count
 foreach ($u in $targetUsers) {
   $idx++
-  Write-Progress -Activity "Processing users" -Status "$idx of $total: $($u.userPrincipalName)" -PercentComplete (($idx/$total)*100)
+  Write-Progress -Activity "Processing users" -Status "$idx of ${total}: $($u.userPrincipalName)" -PercentComplete (($idx/$total)*100)
 
   $created = $u.createdDateTime
   $lastSignIn = Get-LastSignIn -UserPrincipalName $u.userPrincipalName
