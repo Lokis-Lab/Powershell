@@ -56,7 +56,7 @@ try {
   Write-Host "Sync cycle invoked successfully." -ForegroundColor Green
 }
 catch {
-  Write-Host "Failed to start sync on $ServerName: $($_.Exception.Message)" -ForegroundColor Red
+  Write-Host "Failed to start sync on ${ServerName}: $($_.Exception.Message)" -ForegroundColor Red
   return
 }
 
