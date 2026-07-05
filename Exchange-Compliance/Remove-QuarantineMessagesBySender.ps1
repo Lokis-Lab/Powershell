@@ -58,8 +58,8 @@ $emailAddress = Read-Host -Prompt "Enter the sender's email address to delete me
 
 # --- Loop until no messages remain
 while ($true) {
-    $ids = Get-QuarantineMessage -IncludeMessagesFromBlockedSenderAddress -SenderAddress $emailAddress |
-           Select-Object -ExpandProperty Identity
+    $ids = @(Get-QuarantineMessage -IncludeMessagesFromBlockedSenderAddress -SenderAddress $emailAddress |
+           Select-Object -ExpandProperty Identity)
 
     if (-not $ids -or $ids.Count -eq 0) {
         Write-Output "No more messages found from $emailAddress."

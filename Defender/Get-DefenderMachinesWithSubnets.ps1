@@ -52,9 +52,17 @@ $subnetMapping = @{
 }
 
 try {
-  $machinesResponse = Invoke-RestMethod -Method Get -Uri $MachinesEndpoint -Headers $headers
+  $machines = [System.Collections.Generic.List[object]]::new()
+  $nextUrl = $MachinesEndpoint
+  while ($nextUrl) {
+    $machinesResponse = Invoke-RestMethod -Method Get -Uri $nextUrl -Headers $headers
+    if ($machinesResponse.value) {
+      $machines.AddRange(@($machinesResponse.value))
+    }
+    $nextUrl = $machinesResponse.'@odata.nextLink'
+  }
 
-  $output = $machinesResponse.value | ForEach-Object {
+  $output = $machines | ForEach-Object {
     $ipv4Addresses = @()
     $subnetDetails = @()
 

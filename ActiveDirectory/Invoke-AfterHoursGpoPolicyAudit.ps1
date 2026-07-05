@@ -852,7 +852,7 @@ function Get-DescendantDns {
   while ($queue.Count -gt 0) {
     $current = $queue.Dequeue()
     [void]$result.Add($current)
-    $children = $Nodes | Where-Object { $_.ParentDn -eq $current } | Select-Object -ExpandProperty DistinguishedName
+    $children = @($Nodes | Where-Object { $_.ParentDn -eq $current } | Select-Object -ExpandProperty DistinguishedName)
     foreach ($child in $children) {
       $queue.Enqueue($child)
     }

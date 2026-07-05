@@ -90,6 +90,10 @@ Describe 'GPO-Audit-Master XML export uniqueness' {
     $functionAst.Body.Extent.Text | Should -Match '\$guid\s*=\s*\(\[string\]\$g\.Id\)\.Trim'
     $functionAst.Body.Extent.Text | Should -Match "Filter '\*\.xml'"
     $functionAst.Body.Extent.Text | Should -Match 'No GPO XML files were exported successfully'
+    $functionAst.Body.Extent.Text | Should -Match 'No GPOs matched the supplied filters'
+    $noMatchThrow = $functionAst.Body.Extent.Text.IndexOf('No GPOs matched the supplied filters')
+    $removeStale = $functionAst.Body.Extent.Text.IndexOf("Filter '*.xml'")
+    $removeStale | Should -BeGreaterThan $noMatchThrow
   }
 
   It 'reads GPO display name from report XML when flattening' {

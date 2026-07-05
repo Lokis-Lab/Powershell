@@ -214,7 +214,7 @@ function Invoke-DefenderQuery {
         throw "Advanced query failed: $msg"
     }
 
-    return $Response.Results
+    return @($Response.Results)
 }
 
 # ==========================================================

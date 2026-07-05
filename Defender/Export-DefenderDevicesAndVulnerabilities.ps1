@@ -68,10 +68,12 @@ $devices | Select-Object id, computerDnsName, osPlatform, healthStatus, lastSeen
   Export-Csv -Path $DevicesCsvPath -NoTypeInformation -Encoding UTF8 -Force
 Write-Host "Devices exported to $DevicesCsvPath" -ForegroundColor Green
 
-# Reset vulnerabilities CSV so re-runs do not append to stale data
-if (Test-Path -LiteralPath $VulnerabilitiesCsvPath) {
-  Remove-Item -LiteralPath $VulnerabilitiesCsvPath -Force
+# Reset vulnerabilities CSV via temp file so a failed run does not delete the prior export
+$vulnTempPath = "$VulnerabilitiesCsvPath.tmp"
+if (Test-Path -LiteralPath $vulnTempPath) {
+  Remove-Item -LiteralPath $vulnTempPath -Force
 }
+$wroteVulnerabilities = $false
 
 # Per-device vulnerabilities
 foreach ($device in $devices) {
@@ -99,10 +101,21 @@ foreach ($device in $devices) {
     }
 
     if ($vulnRows.Count -gt 0) {
-      $vulnRows | Export-Csv -Path $VulnerabilitiesCsvPath -NoTypeInformation -Encoding UTF8 -Append
+      $vulnRows | Export-Csv -Path $vulnTempPath -NoTypeInformation -Encoding UTF8 -Append
+      $wroteVulnerabilities = $true
       Write-Host "Vulnerabilities for $($device.computerDnsName) exported." -ForegroundColor Yellow
     }
   } catch {
     Write-Warning "Error for $($device.computerDnsName): $($_.Exception.Message)"
   }
+}
+
+if ($wroteVulnerabilities) {
+  Move-Item -LiteralPath $vulnTempPath -Destination $VulnerabilitiesCsvPath -Force
+  Write-Host "Vulnerabilities exported to $VulnerabilitiesCsvPath" -ForegroundColor Green
+} else {
+  if (Test-Path -LiteralPath $vulnTempPath) {
+    Remove-Item -LiteralPath $vulnTempPath -Force
+  }
+  Write-Warning "No vulnerabilities exported; preserving existing file at $VulnerabilitiesCsvPath."
 }

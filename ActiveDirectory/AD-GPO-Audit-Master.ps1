@@ -1373,8 +1373,6 @@ function Invoke-XmlExport {
 
   $exportDir = Join-Path $OutDir 'Exports'
   Ensure-Folder -Path $exportDir
-  Get-ChildItem -LiteralPath $exportDir -Filter '*.xml' -File -ErrorAction SilentlyContinue |
-    Remove-Item -Force -ErrorAction SilentlyContinue
 
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $allGpos = Get-GPO @gpoDom -All | Sort-Object DisplayName
@@ -1421,6 +1419,12 @@ function Invoke-XmlExport {
   if ($xmlPaths.Count -eq 0) {
     throw "No GPO XML files were exported successfully."
   }
+
+  $exportedNames = $xmlPaths | ForEach-Object { Split-Path $_ -Leaf }
+  Get-ChildItem -LiteralPath $exportDir -Filter '*.xml' -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -notin $exportedNames } |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+
   Write-Host "Exported $($xmlPaths.Count) GPO XML files to: $exportDir" -ForegroundColor Cyan
 }
 
