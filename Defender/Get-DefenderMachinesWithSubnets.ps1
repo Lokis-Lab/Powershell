@@ -52,6 +52,7 @@ $subnetMapping = @{
 }
 
 try {
+  # Follow @odata.nextLink to avoid silent truncation on large tenants
   $machines = [System.Collections.Generic.List[object]]::new()
   $nextUrl = $MachinesEndpoint
   while ($nextUrl) {
