@@ -6,6 +6,11 @@ Describe 'Get-DefenderMachinesWithSubnets script' {
                 [ref]$null) } | Should -Not -Throw
     }
 
+    It 'aggregates paginated machine API values' {
+        $items = [System.Collections.Generic.List[object]]::new()
+        $pages = @(
+            @{ value = @([PSCustomObject]@{ id = '1'; computerDnsName = 'a' }, [PSCustomObject]@{ id = '2'; computerDnsName = 'b' }); '@odata.nextLink' = 'page2' },
+            @{ value = @([PSCustomObject]@{ id = '3'; computerDnsName = 'c' }); '@odata.nextLink' = $null }
     It 'aggregates paginated API values' {
         $items = [System.Collections.Generic.List[object]]::new()
         $pages = @(
