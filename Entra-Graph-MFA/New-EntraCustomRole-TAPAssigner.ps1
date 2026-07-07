@@ -46,7 +46,7 @@ $roleDefinition = @{
 }
 
 # --- Convert to JSON
-$roleDefinitionJson = $roleDefinition | ConvertTo-Json -Compress
+$roleDefinitionJson = $roleDefinition | ConvertTo-Json -Compress -Depth 5
 
 # --- Create role via Graph API
 Invoke-MgGraphRequest -Method POST `
