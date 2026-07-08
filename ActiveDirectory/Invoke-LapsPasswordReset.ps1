@@ -62,12 +62,12 @@ if ($Mode -eq "AD") {
 switch ($Mode) {
     "AD" {
         if (-not $OU) { throw "OU must be specified when using Mode 'AD'." }
-        $computers = Get-ADComputer -SearchBase $OU -SearchScope Subtree -Filter * -Property Name |
-                     Select-Object -ExpandProperty Name -Unique
+        $computers = @(Get-ADComputer -SearchBase $OU -SearchScope Subtree -Filter * -Property Name |
+                     Select-Object -ExpandProperty Name -Unique)
     }
     "CSV" {
         if (-not $InputCsvPath) { throw "InputCsvPath must be specified when using Mode 'CSV'." }
-        $computers = Import-Csv $InputCsvPath | Select-Object -ExpandProperty ComputerName -Unique
+        $computers = @(Import-Csv $InputCsvPath | Select-Object -ExpandProperty ComputerName -Unique)
     }
 }
 
