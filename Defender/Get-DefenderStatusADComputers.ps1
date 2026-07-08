@@ -30,7 +30,7 @@ param(
 Import-Module ActiveDirectory
 
 # --- Get all AD computers
-$computers = Get-ADComputer -Filter * | Select-Object -ExpandProperty Name
+$computers = @(Get-ADComputer -Filter * | Select-Object -ExpandProperty Name)
 
 # --- Collect results
 $results = foreach ($computerName in $computers) {
