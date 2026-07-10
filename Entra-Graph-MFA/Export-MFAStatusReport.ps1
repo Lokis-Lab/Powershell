@@ -69,7 +69,7 @@ if (Test-Path -LiteralPath $InputFile) {
     if (-not ($csv | Get-Member -Name UserPrincipalName -MemberType NoteProperty)) {
       throw "Input CSV must have a 'UserPrincipalName' column."
     }
-    $upns = $csv.UserPrincipalName | Where-Object { $_ -and $_.Trim() -ne "" } | Select-Object -Unique
+    $upns = @($csv.UserPrincipalName | Where-Object { $_ -and $_.Trim() -ne "" } | Select-Object -Unique)
     foreach ($upn in $upns) {
       try {
         $u = Get-MgUser -UserId $upn -Property "id,displayName,userPrincipalName,createdDateTime" -ErrorAction Stop
@@ -91,11 +91,12 @@ function Get-LastSignIn {
   param([string]$UserPrincipalName)
 
   try {
-    $signIn = Get-MgAuditLogSignIn -Filter "userPrincipalName eq '$UserPrincipalName'" -Top 1 -Orderby "createdDateTime desc"
+    $escapedUpn = $UserPrincipalName -replace "'", "''"
+    $signIn = Get-MgAuditLogSignIn -Filter "userPrincipalName eq '$escapedUpn'" -Top 1 -Orderby "createdDateTime desc"
     if ($signIn) { return $signIn.createdDateTime }
     else { return $null }
   } catch {
-    Write-Warning "Sign-in query failed for $UserPrincipalName: $($_.Exception.Message)"
+    Write-Warning "Sign-in query failed for ${UserPrincipalName}: $($_.Exception.Message)"
     return $null
   }
 }
@@ -149,7 +150,7 @@ $idx = 0
 $total = $targetUsers.Count
 foreach ($u in $targetUsers) {
   $idx++
-  Write-Progress -Activity "Processing users" -Status "$idx of $total: $($u.userPrincipalName)" -PercentComplete (($idx/$total)*100)
+  Write-Progress -Activity "Processing users" -Status "$idx of ${total}: $($u.userPrincipalName)" -PercentComplete (($idx/$total)*100)
 
   $created = $u.createdDateTime
   $lastSignIn = Get-LastSignIn -UserPrincipalName $u.userPrincipalName
