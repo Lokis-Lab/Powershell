@@ -26,6 +26,16 @@ Describe 'Build-CVELocalRepository pagination guard' {
         $startIndex += $pageCount
         $startIndex | Should -Be 2
     }
+
+    It 'iterates a single vulnerability record as one item' {
+        $records = [PSCustomObject]@{
+            vulnerabilities = [PSCustomObject]@{
+                cve = [PSCustomObject]@{ id = 'CVE-2024-1'; published = '2024-01-01' }
+            }
+        }
+        $ids = foreach ($cve in @($records.vulnerabilities)) { $cve.cve.id }
+        $ids | Should -Be @('CVE-2024-1')
+    }
 }
 
 Describe 'Build-CVELocalRepository script' {

@@ -20,4 +20,24 @@ Describe 'Get-DefenderMachinesWithSubnets script' {
     }
     $items.Count | Should -Be 3
   }
+
+  It 'extracts IPv4 addresses when ipAddresses is a single object' {
+    $machine = [PSCustomObject]@{
+      computerDnsName = 'host1'
+      ipAddresses     = [PSCustomObject]@{ ipAddress = '10.0.0.5'; type = 'Ethernet' }
+      lastSeen        = '2026-01-01'
+      domainName      = 'contoso.com'
+    }
+    $subnetMapping = @{ '10.0.0.' = @{ Scope = 'HQ'; SubnetName = 'Main' } }
+
+    $ipv4Addresses = @()
+    foreach ($ip in @($machine.ipAddresses)) {
+      if ($ip -and $ip.ipAddress -match '^(\d{1,3}\.){3}\d{1,3}$') {
+        $matchingSubnet = $subnetMapping.Keys | Where-Object { $ip.ipAddress.StartsWith($_) }
+        if ($matchingSubnet) { $ipv4Addresses += $ip.ipAddress }
+      }
+    }
+
+    $ipv4Addresses | Should -Be @('10.0.0.5')
+  }
 }

@@ -85,7 +85,7 @@ foreach ($device in $devices) {
     while ($vulnNextUrl) {
       $vulnResp = Invoke-RestMethod -Method Get -Uri $vulnNextUrl -Headers $header -ErrorAction Stop
       if ($vulnResp -and $vulnResp.value) {
-        foreach ($vuln in $vulnResp.value) {
+        foreach ($vuln in @($vulnResp.value)) {
           $vulnRows.Add([PSCustomObject]@{
             DeviceId        = $device.id
             ComputerName    = $device.computerDnsName

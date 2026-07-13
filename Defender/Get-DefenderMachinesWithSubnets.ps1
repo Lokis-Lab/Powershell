@@ -65,14 +65,12 @@ try {
     $ipv4Addresses = @()
     $subnetDetails = @()
 
-    if ($_.ipAddresses -is [array]) {
-      foreach ($ip in $_.ipAddresses) {
-        if ($ip -and $ip.ipAddress -match "^(\d{1,3}\.){3}\d{1,3}$") {
-          $matchingSubnet = $subnetMapping.Keys | Where-Object { $ip.ipAddress.StartsWith($_) }
-          if ($matchingSubnet) {
-            $ipv4Addresses += $ip.ipAddress
-            $subnetDetails += $subnetMapping[$matchingSubnet]
-          }
+    foreach ($ip in @($_.ipAddresses)) {
+      if ($ip -and $ip.ipAddress -match "^(\d{1,3}\.){3}\d{1,3}$") {
+        $matchingSubnet = $subnetMapping.Keys | Where-Object { $ip.ipAddress.StartsWith($_) }
+        if ($matchingSubnet) {
+          $ipv4Addresses += $ip.ipAddress
+          $subnetDetails += $subnetMapping[$matchingSubnet]
         }
       }
     }

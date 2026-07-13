@@ -31,4 +31,14 @@ Describe 'Remove-QuarantineMessagesBySender script' {
     $collected.Count | Should -Be 1
     $collected[0] | Should -Be 'quarantine-id-12345'
   }
+
+  It 'stops when no messages are deleted in a round' {
+    $whileLoop = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.WhileStatementAst]
+    }, $true)
+
+    $whileLoop.Body.Extent.Text | Should -Match '\$deletedThisRound\s*-eq\s*0'
+    $whileLoop.Body.Extent.Text | Should -Match 'infinite loop'
+  }
 }

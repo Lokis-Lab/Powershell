@@ -214,7 +214,7 @@ function Invoke-DefenderQuery {
         throw "Advanced query failed: $msg"
     }
 
-    return $Response.Results
+    return @($Response.Results)
 }
 
 # ==========================================================
@@ -1321,7 +1321,12 @@ function Ensure-SharePointFolder {
         try {
             Invoke-RestMethod -Method GET -Uri $getUri -Headers $AuthHeaders | Out-Null
         } catch {
-            $parentPath = ($currentPath -split '/')[0..([Math]::Max(0, ($currentPath -split '/').Count - 2))] -join '/'
+            $segments = @($currentPath -split '/')
+            $parentPath = if ($segments.Count -le 1) {
+                ''
+            } else {
+                ($segments[0..($segments.Count - 2)] -join '/')
+            }
             $parentEncoded = Convert-ToGraphPath -Path $parentPath
 
             $childrenUri = if ($parentPath) {

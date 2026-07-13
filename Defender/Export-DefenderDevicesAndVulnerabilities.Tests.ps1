@@ -20,4 +20,12 @@ Describe 'Export-DefenderDevicesAndVulnerabilities script' {
         }
         $items.Count | Should -Be 3
     }
+
+    It 'iterates a single vulnerability value as one item' {
+        $response = [PSCustomObject]@{
+            value = [PSCustomObject]@{ id = 'vuln-1'; severity = 'High'; name = 'Test' }
+        }
+        $collected = foreach ($vuln in @($response.value)) { $vuln.id }
+        $collected | Should -Be @('vuln-1')
+    }
 }
