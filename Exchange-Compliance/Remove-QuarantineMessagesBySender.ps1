@@ -66,14 +66,21 @@ while ($true) {
         break
     }
 
+    $deletedThisRound = 0
     foreach ($id in $ids) {
         try {
             Delete-QuarantineMessage -Identity $id -Confirm:$false
+            $deletedThisRound++
             Write-Output "Deleted message with ID: $id"
         }
         catch {
             Write-Error "Failed to delete message with ID: $id. Error: $_"
         }
+    }
+
+    if ($deletedThisRound -eq 0) {
+        Write-Error "No quarantine messages were deleted in the last round; stopping to avoid an infinite loop."
+        break
     }
 
     # Optional: Prevent rapid looping
