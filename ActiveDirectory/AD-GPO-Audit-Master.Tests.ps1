@@ -86,6 +86,63 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
   }
 }
 
+Describe 'AD-GPO-Audit-Master XML export safety' {
+  BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot 'AD-GPO-Audit-Master.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+      throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+  }
+
+  It 'does not delete all Exports XML before re-export' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Not -Match 'Get-ChildItem[^\r\n]*Exports[^\r\n]*Remove-Item'
+  }
+
+  It 'exports GPO XML via a temp file before replacing the destination' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match '\.tmp'
+    $functionAst.Body.Extent.Text | Should -Match 'Move-Item'
+  }
+
+  It 'does not require AD RSAT for GPO-only CLI modes' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-AdGpoAuditMasterMode'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $body = $functionAst.Body.Extent.Text
+    $gpoStart = $body.IndexOf("'XmlExport'")
+    $gpoStart | Should -BeGreaterThan 0
+    $gpoEnd = $body.IndexOf('Write-Host "GPO audit finished. Output: $OutDir"', $gpoStart)
+    $gpoEnd | Should -BeGreaterThan $gpoStart
+    $gpoBranch = $body.Substring($gpoStart, $gpoEnd - $gpoStart)
+    $gpoBranch | Should -Not -Match 'Ensure-AuditAdContextInitialized'
+  }
+}
+
 Describe 'AD-GPO-Audit-Master flatten CSV uniqueness' {
   BeforeAll {
     $scriptPath = Join-Path $PSScriptRoot 'AD-GPO-Audit-Master.ps1'
