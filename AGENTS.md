@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## gstack
+
+Cursor agents in this workspace should follow the gstack rule at [`.cursor/rules/gstack.mdc`](../.cursor/rules/gstack.mdc) for workflow skills (`/office-hours`, `/qa`, `/review`, `/ship`, etc.).
+
 ## Cursor Cloud specific instructions
 
 ### Overview
