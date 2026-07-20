@@ -1373,8 +1373,6 @@ function Invoke-XmlExport {
 
   $exportDir = Join-Path $OutDir 'Exports'
   Ensure-Folder -Path $exportDir
-  Get-ChildItem -LiteralPath $exportDir -Filter '*.xml' -File -ErrorAction SilentlyContinue |
-    Remove-Item -Force -ErrorAction SilentlyContinue
 
   $gpoDom = Get-GpoAuditGpoDomainSplat
   $allGpos = Get-GPO @gpoDom -All | Sort-Object DisplayName
@@ -1390,28 +1388,40 @@ function Invoke-XmlExport {
 
   if ($hasPS7) {
     $xmlPaths = $gpos | ForEach-Object -Parallel {
+      $tempFile = $null
       try {
         $safe = ($PSItem.DisplayName -replace '[^\w\.-]+','_')
         $guid = ([string]$PSItem.Id).Trim('{}')
         $file = Join-Path $using:exportDir ("{0}_{1}.xml" -f $safe, $guid)
+        $tempFile = "$file.tmp"
         $domParams = @{}
         if ($using:domDns) { $domParams['Domain'] = $using:domDns }
-        Get-GPOReport @domParams -Name $PSItem.DisplayName -ReportType XML -Path $file
+        Get-GPOReport @domParams -Name $PSItem.DisplayName -ReportType XML -Path $tempFile
+        Move-Item -LiteralPath $tempFile -Destination $file -Force
         $file
       } catch {
+        if ($tempFile -and (Test-Path -LiteralPath $tempFile)) {
+          Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
+        }
         Write-Warning "Failed to export '$($PSItem.DisplayName)': $($_.Exception.Message)"
         $null
       }
     } -ThrottleLimit $Throttle
   } else {
     foreach ($g in $gpos) {
+      $tempFile = $null
       try {
         $safe = New-SafeName $g.DisplayName
         $guid = ([string]$g.Id).Trim('{}')
         $file = Join-Path $exportDir ("{0}_{1}.xml" -f $safe, $guid)
-        Get-GPOReport @gpoDom -Name $g.DisplayName -ReportType XML -Path $file
+        $tempFile = "$file.tmp"
+        Get-GPOReport @gpoDom -Name $g.DisplayName -ReportType XML -Path $tempFile
+        Move-Item -LiteralPath $tempFile -Destination $file -Force
         $xmlPaths += $file
       } catch {
+        if ($tempFile -and (Test-Path -LiteralPath $tempFile)) {
+          Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
+        }
         Write-Warning "Failed to export '$($g.DisplayName)': $($_.Exception.Message)"
       }
     }
@@ -3216,7 +3226,6 @@ function Invoke-AdGpoAuditMasterMode {
     }
     { $_ -in 'XmlExport', 'FlattenXml', 'XmlExportAndFlatten', 'RegistrySnapshotExport', 'RegistrySnapshotCompare', 'SearchSettings' } {
       Import-GroupPolicyModule
-      Ensure-AuditAdContextInitialized
       switch ($Mode) {
         'XmlExport' {
           Invoke-XmlExport -OutDir $OutDir -Throttle $Throttle -IncludeGpoName $IncludeGpoName `
