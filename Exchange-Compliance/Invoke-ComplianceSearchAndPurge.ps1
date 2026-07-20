@@ -18,6 +18,9 @@
       Install-Module ExchangeOnlineManagement -Force -AllowClobber
     - Appropriate permissions in Microsoft Purview Compliance Portal
     - Purge action is irreversible. Use with caution.
+  Auth (MC1248389):
+    - Use interactive modern auth / MFA, app-only certificate, or managed identity.
+    - Do not use Connect-IPPSSession -Credential (retiring December 2026 module releases).
 #>
 
 # --- Ensure ExchangeOnlineManagement module is installed
@@ -27,8 +30,9 @@ if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
 Import-Module ExchangeOnlineManagement
 
 # --- Connect to Exchange Online Security & Compliance Center
-# Replace with Connect-ExchangeOnline if using EXO directly
-Connect-IPPSSession   # <-- interactive login required
+# Interactive modern auth + MFA. Do not use -Credential (MC1248389).
+# Replace with Connect-ExchangeOnline if using EXO directly.
+Connect-IPPSSession
 
 # --- Function: Calculate difference in days between two dates
 function Calculate-DateDifference {

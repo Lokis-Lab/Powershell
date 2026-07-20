@@ -27,10 +27,24 @@ Install-Module Microsoft.Graph -Scope AllUsers -Force
 Install-Module ExchangeOnlineManagement -Scope AllUsers -Force
 Install-Module ActiveDirectory -Force  # on a DC or with RSAT
 
-# Connect to core services
+# Connect to core services (modern auth only — see Exchange Online auth standard below)
 Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","UserAuthenticationMethod.Read.All"
-Connect-ExchangeOnline
+Connect-ExchangeOnline -UserPrincipalName admin@contoso.onmicrosoft.com
 ```
+
+---
+
+## Exchange Online auth standard (MC1248389)
+
+Microsoft is retiring `-Credential` on `Connect-ExchangeOnline` and `Connect-IPPSSession` in Exchange Online PowerShell module versions released beginning **December 2026** ([MC1248389](https://msmessagecenter.com/MC1248389)). Do **not** pass username/password via `-Credential` for EXO or Security & Compliance PowerShell.
+
+| Scenario | Use this instead |
+|---|---|
+| Interactive admin | `Connect-ExchangeOnline -UserPrincipalName <upn>` (modern auth + MFA) |
+| Unattended outside Azure | App-only certificate: `-AppId`, `-CertificateThumbprint`/`-Certificate`/`-CertificateFilePath`, `-Organization` |
+| Unattended in Azure | `-ManagedIdentity -Organization <tenant>.onmicrosoft.com` |
+
+On-prem Exchange `New-PSSession -Credential` (Kerberos/Basic to local servers) is unaffected.
 
 ---
 

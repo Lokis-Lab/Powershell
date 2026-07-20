@@ -17,9 +17,13 @@
     - ExchangeOnlineManagement module
     - Permissions to access and delete quarantined messages
     - Deletion is permanent, use with caution
+  Auth (MC1248389):
+    - Use interactive modern auth / MFA, app-only certificate, or managed identity.
+    - Do not use Connect-ExchangeOnline -Credential or Connect-IPPSSession -Credential
+      (retiring in Exchange Online PowerShell modules from December 2026).
 #>
 
-# --- Function: Ensure connection to Exchange Online
+# --- Function: Ensure connection to Exchange Online (modern auth; no -Credential)
 function Check-ExchangeOnlineSession {
     try {
         Get-ExchangeOnlineConnection | Out-Null
@@ -27,17 +31,19 @@ function Check-ExchangeOnlineSession {
     }
     catch {
         Write-Output "You are not connected to Exchange Online. Connecting now..."
-        Connect-ExchangeOnline   # <-- interactive login required
+        # Interactive modern auth + MFA. Do not use -Credential (MC1248389).
+        Connect-ExchangeOnline
     }
 }
 
-# --- Function: Ensure connection to Security & Compliance (IPPSSession)
+# --- Function: Ensure connection to Security & Compliance (modern auth; no -Credential)
 function Check-IPPSSession {
     try {
         $session = Get-PSSession | Where-Object { $_.ConfigurationName -eq "Microsoft.Exchange" }
         if (-not $session) {
             Write-Output "You are not connected to Security & Compliance (IPPSSession). Connecting now..."
-            Connect-IPPSSession   # <-- interactive login required
+            # Interactive modern auth + MFA. Do not use -Credential (MC1248389).
+            Connect-IPPSSession
         }
         else {
             Write-Output "You are already connected to Security & Compliance (IPPSSession)."
