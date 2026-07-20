@@ -88,7 +88,9 @@ Describe 'GPO-Audit-Master XML export uniqueness' {
     $functionAst | Should -Not -BeNullOrEmpty
     $functionAst.Body.Extent.Text | Should -Match '\{0\}_\{1\}\.xml'
     $functionAst.Body.Extent.Text | Should -Match '\$guid\s*=\s*\(\[string\]\$g\.Id\)\.Trim'
-    $functionAst.Body.Extent.Text | Should -Match "Filter '\*\.xml'"
+    $functionAst.Body.Extent.Text | Should -Not -Match "Filter '\*\.xml'"
+    $functionAst.Body.Extent.Text | Should -Match '\.tmp'
+    $functionAst.Body.Extent.Text | Should -Match 'Move-Item'
     $functionAst.Body.Extent.Text | Should -Match 'No GPO XML files were exported successfully'
   }
 
