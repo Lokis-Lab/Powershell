@@ -7,6 +7,8 @@ A curated set of PowerShell scripts for Microsoft 365, Entra ID (Azure AD), Micr
 > - No hard‑coded secrets; support for secure auth (Graph/EXO), env vars, or SecretManagement
 > - Runnable examples and sensible defaults
 
+> **F5 / load balancing:** I no longer work with F5. Any F5-related scripts that may appear in history or forks are **not maintained** and will **not** receive updates.
+
 ---
 
 ## 🧰 Prerequisites (per area)
