@@ -46,3 +46,10 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Get-DescendantDns' {
     $result.Count | Should -Be 3
   }
 }
+
+Describe 'Invoke-AfterHoursGpoPolicyAudit Import-Link-GpoBundle helper' {
+  It 'wraps Import-Csv in an array so a single link-plan row is not iterated as column values' {
+    $source = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1') -Raw
+    $source | Should -Match '\$plan\s*=\s*@\(Import-Csv\s+-LiteralPath\s+\$LinkPlanCsv\)'
+  }
+}

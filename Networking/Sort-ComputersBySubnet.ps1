@@ -35,8 +35,8 @@ param(
 )
 
 # --- Import input CSV files
-$computers = Import-Csv -Path $ComputersFile
-$subnets   = Import-Csv -Path $SubnetsFile
+$computers = @(Import-Csv -Path $ComputersFile)
+$subnets   = @(Import-Csv -Path $SubnetsFile)
 
 # --- Function: check if an IP belongs to a subnet
 function Match-Subnet {
@@ -61,11 +61,11 @@ $sortedComputers = foreach ($computer in $computers) {
 
     foreach ($ipAddress in $ipAddresses) {
         # Check against each subnet
-        $matchingSubnet = $subnets | Where-Object {
+        $matchingSubnet = @($subnets | Where-Object {
             Match-Subnet -ipAddress $ipAddress -subnet $_.Scope
-        }
+        })
 
-        if ($matchingSubnet) {
+        if ($matchingSubnet.Count -gt 0) {
             foreach ($sub in $matchingSubnet) {
                 [PSCustomObject]@{
                     ComputerName = $computer.ComputerName
