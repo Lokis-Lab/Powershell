@@ -1063,7 +1063,7 @@ param(
 )
 
 Import-Module GroupPolicy -ErrorAction Stop
-$plan = Import-Csv -LiteralPath $LinkPlanCsv
+$plan = @(Import-Csv -LiteralPath $LinkPlanCsv)
 
 foreach ($row in $plan) {
   if ([string]::IsNullOrWhiteSpace($row.GpoName) -or [string]::IsNullOrWhiteSpace($row.ContainerDn)) { continue }

@@ -117,3 +117,44 @@ Describe 'GPO-Audit-Master XML export uniqueness' {
     $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}_\{1\}\.csv'
   }
 }
+
+Describe 'GPO-Audit-Master flatten compare scalar CSV handling' {
+  BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot 'GPO-Audit-Master.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+      throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+  }
+
+  It 'wraps Import-Csv in Invoke-FlattenCompare so one-row master flatten CSVs compare correctly' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-FlattenCompare'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match '\$L\s*=\s*@\(Import-Csv\s+-LiteralPath\s+\$LeftPath\)'
+    $functionAst.Body.Extent.Text | Should -Match '\$R\s*=\s*@\(Import-Csv\s+-LiteralPath\s+\$RightPath\)'
+  }
+
+  It 'wraps Import-Csv in Invoke-FlattenGpoCompare so one-row per-GPO flatten CSVs compare correctly' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-FlattenGpoCompare'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match '\$L\s*=\s*@\(Import-Csv\s+-LiteralPath\s+\$LeftCsv\)'
+    $functionAst.Body.Extent.Text | Should -Match '\$R\s*=\s*@\(Import-Csv\s+-LiteralPath\s+\$RightCsv\)'
+  }
+}

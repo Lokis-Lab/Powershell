@@ -1354,8 +1354,8 @@ function Invoke-FlattenCompare {
     throw "Right master flatten CSV not found: $RightPath"
   }
 
-  $L = Import-Csv -LiteralPath $LeftPath
-  $R = Import-Csv -LiteralPath $RightPath
+  $L = @(Import-Csv -LiteralPath $LeftPath)
+  $R = @(Import-Csv -LiteralPath $RightPath)
 
   function Make-Id {
     param($x)
@@ -1447,8 +1447,8 @@ function Invoke-FlattenGpoCompare {
     throw "Right flatten CSV not found: $RightCsv"
   }
 
-  $L = Import-Csv -LiteralPath $LeftCsv
-  $R = Import-Csv -LiteralPath $RightCsv
+  $L = @(Import-Csv -LiteralPath $LeftCsv)
+  $R = @(Import-Csv -LiteralPath $RightCsv)
 
   $leftGpoName  = ($L | Select-Object -ExpandProperty GPO -First 1)
   $rightGpoName = ($R | Select-Object -ExpandProperty GPO -First 1)
