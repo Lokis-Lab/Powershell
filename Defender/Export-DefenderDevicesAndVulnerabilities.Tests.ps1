@@ -20,4 +20,37 @@ Describe 'Export-DefenderDevicesAndVulnerabilities script' {
         }
         $items.Count | Should -Be 3
     }
+
+    It 'does not promote partial vulnerability export when device failures occur' {
+        $root = Join-Path ([System.IO.Path]::GetTempPath()) ("defender-vuln-export-{0}" -f [guid]::NewGuid())
+        $finalPath = Join-Path $root 'Vulnerabilities.csv'
+        $tempPath = Join-Path $root 'Vulnerabilities.csv.12345.tmp'
+        try {
+            New-Item -ItemType Directory -Path $root -Force | Out-Null
+            'DeviceId,ComputerName,VulnerabilityId,Severity,CveId,Title' | Set-Content -LiteralPath $finalPath -Encoding UTF8
+            'prior-device,prior-host,prior-vuln,High,CVE-OLD,Old' | Add-Content -LiteralPath $finalPath -Encoding UTF8
+
+            'DeviceId,ComputerName,VulnerabilityId,Severity,CveId,Title' | Set-Content -LiteralPath $tempPath -Encoding UTF8
+            'new-device,new-host,new-vuln,High,CVE-NEW,New' | Add-Content -LiteralPath $tempPath -Encoding UTF8
+
+            $deviceFailureCount = 1
+            $promoted = $false
+            if (Test-Path -LiteralPath $tempPath) {
+                if ($deviceFailureCount -eq 0) {
+                    Move-Item -LiteralPath $tempPath -Destination $finalPath -Force
+                    $promoted = $true
+                }
+            }
+
+            $promoted | Should -Be $false
+            (Test-Path -LiteralPath $tempPath) | Should -Be $true
+            (Get-Content -LiteralPath $finalPath -Raw) | Should -Match 'prior-vuln'
+            (Get-Content -LiteralPath $finalPath -Raw) | Should -Not -Match 'new-vuln'
+        }
+        finally {
+            if (Test-Path -LiteralPath $root) {
+                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
 }

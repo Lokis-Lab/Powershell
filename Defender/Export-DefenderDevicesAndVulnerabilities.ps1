@@ -75,6 +75,7 @@ if (Test-Path -LiteralPath $vulnTempPath) {
 }
 
 # Per-device vulnerabilities
+$deviceFailureCount = 0
 foreach ($device in $devices) {
   Start-Sleep -Seconds 1
   $vulnUrl = "$ApiBase/api/machines/$($device.id)/vulnerabilities"  # <-- switches with cloud
@@ -85,7 +86,7 @@ foreach ($device in $devices) {
     while ($vulnNextUrl) {
       $vulnResp = Invoke-RestMethod -Method Get -Uri $vulnNextUrl -Headers $header -ErrorAction Stop
       if ($vulnResp -and $vulnResp.value) {
-        foreach ($vuln in $vulnResp.value) {
+        foreach ($vuln in @($vulnResp.value)) {
           $vulnRows.Add([PSCustomObject]@{
             DeviceId        = $device.id
             ComputerName    = $device.computerDnsName
@@ -104,11 +105,18 @@ foreach ($device in $devices) {
       Write-Host "Vulnerabilities for $($device.computerDnsName) exported." -ForegroundColor Yellow
     }
   } catch {
+    $deviceFailureCount++
     Write-Warning "Error for $($device.computerDnsName): $($_.Exception.Message)"
   }
 }
 
 if (Test-Path -LiteralPath $vulnTempPath) {
-  Move-Item -LiteralPath $vulnTempPath -Destination $VulnerabilitiesCsvPath -Force
-  Write-Host "Vulnerabilities exported to $VulnerabilitiesCsvPath" -ForegroundColor Green
+  if ($deviceFailureCount -gt 0) {
+    Write-Warning "Skipped replacing $VulnerabilitiesCsvPath because $deviceFailureCount device(s) failed. Partial results remain in: $vulnTempPath"
+  } else {
+    Move-Item -LiteralPath $vulnTempPath -Destination $VulnerabilitiesCsvPath -Force
+    Write-Host "Vulnerabilities exported to $VulnerabilitiesCsvPath" -ForegroundColor Green
+  }
+} elseif ($deviceFailureCount -gt 0) {
+  Write-Warning "Vulnerability export failed for all devices ($deviceFailureCount failure(s)). Previous export preserved."
 }
