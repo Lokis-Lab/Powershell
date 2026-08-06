@@ -75,6 +75,7 @@ if (Test-Path -LiteralPath $vulnTempPath) {
 }
 
 # Per-device vulnerabilities
+$failedDevices = [System.Collections.Generic.List[string]]::new()
 foreach ($device in $devices) {
   Start-Sleep -Seconds 1
   $vulnUrl = "$ApiBase/api/machines/$($device.id)/vulnerabilities"  # <-- switches with cloud
@@ -105,10 +106,18 @@ foreach ($device in $devices) {
     }
   } catch {
     Write-Warning "Error for $($device.computerDnsName): $($_.Exception.Message)"
+    [void]$failedDevices.Add($device.computerDnsName)
   }
 }
 
 if (Test-Path -LiteralPath $vulnTempPath) {
-  Move-Item -LiteralPath $vulnTempPath -Destination $VulnerabilitiesCsvPath -Force
-  Write-Host "Vulnerabilities exported to $VulnerabilitiesCsvPath" -ForegroundColor Green
+  if ($failedDevices.Count -eq 0) {
+    Move-Item -LiteralPath $vulnTempPath -Destination $VulnerabilitiesCsvPath -Force
+    Write-Host "Vulnerabilities exported to $VulnerabilitiesCsvPath" -ForegroundColor Green
+  } else {
+    Remove-Item -LiteralPath $vulnTempPath -Force
+    throw "Vulnerability export incomplete: $($failedDevices.Count) device(s) failed. Prior export at '$VulnerabilitiesCsvPath' was preserved. Failed devices: $($failedDevices -join ', ')"
+  }
+} elseif ($failedDevices.Count -gt 0) {
+  throw "All device vulnerability queries failed ($($failedDevices.Count) device(s))."
 }
