@@ -27,6 +27,26 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Get-DescendantDns' {
         [ref]$null) } | Should -Not -Throw
   }
 
+  It 'clears extracted template folders before re-expanding updated zips' {
+    $scriptPath = Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+    $functionAst = $ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Expand-ZipIfNeeded'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $functionAst.Body.Extent.Text | Should -Match 'Get-ChildItem -LiteralPath \$DestinationFolder'
+    $functionAst.Body.Extent.Text | Should -Match 'Remove-Item -Recurse -Force'
+  }
+
   It 'wraps BFS child results in an array to avoid character-wise iteration' {
     $scriptPath = Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1'
     $source = Get-Content -LiteralPath $scriptPath -Raw
