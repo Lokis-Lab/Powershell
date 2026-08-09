@@ -32,4 +32,19 @@ Describe 'Export-MFAStatusReport script' {
   It 'wraps imported UPNs in an array before foreach' {
     $script:Ast.Extent.Text | Should -Match '\$upns\s*=\s*@\('
   }
+
+  It 'wraps Graph auth method results in arrays before counting' {
+    $getMfaEnabled = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-MFAEnabled'
+    }, $true)
+
+    $getMfaEnabled | Should -Not -BeNullOrEmpty
+    $getMfaEnabled.Body.Extent.Text | Should -Match '@\(\$auth\)\.Count'
+    $getMfaEnabled.Body.Extent.Text | Should -Match '@\(\$fido\)\.Count'
+    $getMfaEnabled.Body.Extent.Text | Should -Match '@\(\$oath\)\.Count'
+    $getMfaEnabled.Body.Extent.Text | Should -Match '@\(\$whfb\)\.Count'
+    $getMfaEnabled.Body.Extent.Text | Should -Match '@\(\$tap\)\.Count'
+  }
 }

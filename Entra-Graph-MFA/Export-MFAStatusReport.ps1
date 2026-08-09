@@ -108,7 +108,7 @@ function Get-MFAEnabled {
   try {
     if (-not $hasMfa) {
       $auth = Get-MgUserAuthenticationMicrosoftAuthenticatorMethod -UserId $UserId -ErrorAction Stop
-      if ($auth.Count -gt 0) { $hasMfa = $true }
+      if (@($auth).Count -gt 0) { $hasMfa = $true }
     }
     if (-not $hasMfa) {
       $phones = Get-MgUserAuthenticationPhoneMethod -UserId $UserId -ErrorAction Stop
@@ -118,20 +118,20 @@ function Get-MFAEnabled {
     }
     if (-not $hasMfa) {
       $fido = Get-MgUserAuthenticationFido2Method -UserId $UserId -ErrorAction Stop
-      if ($fido.Count -gt 0) { $hasMfa = $true }
+      if (@($fido).Count -gt 0) { $hasMfa = $true }
     }
     if (-not $hasMfa) {
       $oath = Get-MgUserAuthenticationSoftwareOathMethod -UserId $UserId -ErrorAction Stop
-      if ($oath.Count -gt 0) { $hasMfa = $true }
+      if (@($oath).Count -gt 0) { $hasMfa = $true }
     }
     if (-not $hasMfa) {
       $whfb = Get-MgUserAuthenticationWindowsHelloForBusinessMethod -UserId $UserId -ErrorAction Stop
-      if ($whfb.Count -gt 0) { $hasMfa = $true }
+      if (@($whfb).Count -gt 0) { $hasMfa = $true }
     }
     if (-not $hasMfa) {
       try {
         $tap = Get-MgUserAuthenticationTemporaryAccessPassMethod -UserId $UserId -ErrorAction Stop
-        if ($tap.Count -gt 0) { $hasMfa = $true }
+        if (@($tap).Count -gt 0) { $hasMfa = $true }
       } catch { } # TAP may not exist everywhere
     }
     return $hasMfa
