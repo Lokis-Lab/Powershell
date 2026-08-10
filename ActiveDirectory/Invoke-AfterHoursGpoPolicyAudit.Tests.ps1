@@ -33,6 +33,13 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Get-DescendantDns' {
     $source | Should -Match '\$children\s*=\s*@\(\$Nodes'
   }
 
+  It 'exports GPO reports via temp file before promoting to final path' {
+    $scriptPath = Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1'
+    $source = Get-Content -LiteralPath $scriptPath -Raw
+    $source | Should -Match 'Get-GPOReport[^\n]+-Path \$tempReportPath'
+    $source | Should -Match 'Move-Item -LiteralPath \$tempReportPath -Destination \$reportPath'
+  }
+
   It 'includes deeper descendants when a node has exactly one child' {
     $nodes = @(
       [PSCustomObject]@{ DistinguishedName = 'OU=Root,DC=contoso,DC=com'; ParentDn = 'DC=contoso,DC=com' },
