@@ -42,4 +42,21 @@ Describe 'Get-DefenderMachinesWithSubnets script' {
 
     $ipv4Addresses.Count | Should -BeGreaterThan 0
   }
+
+  It 'throws instead of overwriting the CSV when no machines match subnet mapping' {
+    $scriptPath = Join-Path $PSScriptRoot 'Get-DefenderMachinesWithSubnets.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors)
+
+    $tryAst = $ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.StatementBlockAst] -and
+        $node.Extent.Text -match 'No machines matched the subnet mapping'
+    }, $true)
+
+    $tryAst | Should -Not -BeNullOrEmpty
+    $tryAst.Extent.Text | Should -Match '\$rows\.Count -eq 0'
+    $tryAst.Extent.Text | Should -Match 'throw'
+  }
 }

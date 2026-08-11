@@ -116,4 +116,21 @@ Describe 'GPO-Audit-Master XML export uniqueness' {
     $functionAst | Should -Not -BeNullOrEmpty
     $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}_\{1\}\.csv'
   }
+
+  It 'returns exported XML paths and can flatten only that export set' {
+    $exportAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+    $flattenAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-FlattenXml'
+    }, $true)
+
+    $exportAst.Body.Extent.Text | Should -Match 'return \$xmlPaths'
+    $flattenAst.Body.Extent.Text | Should -Match '\[string\[\]\]\$XmlFiles'
+    $flattenAst.Body.Extent.Text | Should -Match 'Get-ChildItem -LiteralPath \$inDir -Filter \*\.xml'
+  }
 }

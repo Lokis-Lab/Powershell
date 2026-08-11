@@ -84,7 +84,7 @@ function Store-CVEInCSV {
         $csvIndex++
     }
 
-    foreach ($cve in $CVERecords.vulnerabilities) {
+    foreach ($cve in @($CVERecords.vulnerabilities)) {
         $cveId = $cve.cve.id
         $publishedDate = $cve.cve.published
 

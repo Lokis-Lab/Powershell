@@ -89,7 +89,12 @@ try {
     }
   }
 
-  $output | Where-Object { $_ } | Export-Csv -Path $OutputCsvPath -NoTypeInformation -Encoding UTF8 -Force
+  $rows = @($output | Where-Object { $_ })
+  if ($rows.Count -eq 0) {
+    throw "No machines matched the subnet mapping. Prior export at '$OutputCsvPath' was preserved."
+  }
+
+  $rows | Export-Csv -Path $OutputCsvPath -NoTypeInformation -Encoding UTF8 -Force
   Write-Host "Data exported to $OutputCsvPath" -ForegroundColor Green
 }
 catch {

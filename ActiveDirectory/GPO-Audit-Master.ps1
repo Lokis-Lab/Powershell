@@ -465,6 +465,7 @@ function Invoke-XmlExport {
     throw "No GPO XML files were exported successfully."
   }
   Write-Host "Exported $($xmlPaths.Count) GPO XML files to: $exportDir" -ForegroundColor Cyan
+  return $xmlPaths
 }
 
 # -------------------- Flatten XML (from OutDir\Exports) --------------------
@@ -1273,14 +1274,23 @@ function Invoke-SearchGpoSettings {
 
 function Invoke-FlattenXml {
   param(
-    [Parameter(Mandatory)][string]$OutDir
+    [Parameter(Mandatory)][string]$OutDir,
+    [string[]]$XmlFiles
   )
 
   $flattenDir = Join-Path $OutDir 'Flattened'
   Ensure-Folder -Path $flattenDir
 
   $inDir = Join-Path $OutDir 'Exports'
-  $xmlFiles = Get-ChildItem -LiteralPath $inDir -Filter *.xml -File -ErrorAction Stop
+  if ($XmlFiles -and $XmlFiles.Count -gt 0) {
+    $xmlFiles = @($XmlFiles | ForEach-Object {
+      if ($_ -is [System.IO.FileInfo]) { $_ }
+      elseif (Test-Path -LiteralPath $_) { Get-Item -LiteralPath $_ }
+      else { throw "Exported XML not found: $_" }
+    })
+  } else {
+    $xmlFiles = @(Get-ChildItem -LiteralPath $inDir -Filter *.xml -File -ErrorAction Stop)
+  }
   if ($xmlFiles.Count -eq 0) { throw "No XML files found in $inDir" }
 
   $allRows = [System.Collections.Generic.List[object]]::new()
@@ -2215,8 +2225,8 @@ function Show-GpoAuditMasterMainGui {
           $outDir = if ($state.OutDirTb.Text.Trim()) { $state.OutDirTb.Text.Trim() } else { $DefaultOutDir }
           $thr = if ($state.ThrottleNum) { [int]$state.ThrottleNum.Value } else { $DefaultThrottle }
           $fp = Get-FilterParams $state
-          Invoke-XmlExport -OutDir $outDir -Throttle $thr -IncludeGpoName $fp.IncludeGpoName -IncludeGpoNameRegex $fp.IncludeGpoNameRegex -IncludeGpoId $fp.IncludeGpoId
-          Invoke-FlattenXml -OutDir $outDir
+          $exported = Invoke-XmlExport -OutDir $outDir -Throttle $thr -IncludeGpoName $fp.IncludeGpoName -IncludeGpoNameRegex $fp.IncludeGpoNameRegex -IncludeGpoId $fp.IncludeGpoId
+          Invoke-FlattenXml -OutDir $outDir -XmlFiles $exported
           $statusLabel.Text = "Export + flatten complete: $outDir"
         }
         3 {
@@ -2246,8 +2256,8 @@ function Show-GpoAuditMasterMainGui {
             [System.Windows.Forms.MessageBox]::Show("Baseline folder is required.", "GPO Audit Master", "OK", "Warning")
             return
           }
-          Invoke-XmlExport -OutDir $outDir -Throttle $thr -IncludeGpoName $fp.IncludeGpoName -IncludeGpoNameRegex $fp.IncludeGpoNameRegex -IncludeGpoId $fp.IncludeGpoId
-          Invoke-FlattenXml -OutDir $outDir
+          $exported = Invoke-XmlExport -OutDir $outDir -Throttle $thr -IncludeGpoName $fp.IncludeGpoName -IncludeGpoNameRegex $fp.IncludeGpoNameRegex -IncludeGpoId $fp.IncludeGpoId
+          Invoke-FlattenXml -OutDir $outDir -XmlFiles $exported
           $leftMaster = Join-Path $baseline "MasterFlatten_AllGPOs.csv"
           $rightMaster = Join-Path $outDir "MasterFlatten_AllGPOs.csv"
           Invoke-FlattenCompare -LeftPath $leftMaster -RightPath $rightMaster -OutFolder $compareOut
@@ -2257,8 +2267,8 @@ function Show-GpoAuditMasterMainGui {
           $choices = Show-GpoCompareDialog -DefaultOutDir $DefaultOutDir -DefaultThrottle $DefaultThrottle
           if (-not $choices) { $statusLabel.Text = "Cancelled."; return }
           Ensure-Folder -Path (Split-Path -Parent $choices.ComparePath -ErrorAction SilentlyContinue)
-          Invoke-XmlExport -OutDir $choices.OutDir -Throttle $choices.Throttle -IncludeGpoName @($choices.Gpo1, $choices.Gpo2)
-          Invoke-FlattenXml -OutDir $choices.OutDir
+          $exported = Invoke-XmlExport -OutDir $choices.OutDir -Throttle $choices.Throttle -IncludeGpoName @($choices.Gpo1, $choices.Gpo2)
+          Invoke-FlattenXml -OutDir $choices.OutDir -XmlFiles $exported
           $leftCsv = Get-GpoFlattenCsvPath -FlattenDir (Join-Path $choices.OutDir 'Flattened') -GpoName $choices.Gpo1 -GpoGuid $choices.Gpo1Id
           $rightCsv = Get-GpoFlattenCsvPath -FlattenDir (Join-Path $choices.OutDir 'Flattened') -GpoName $choices.Gpo2 -GpoGuid $choices.Gpo2Id
           Invoke-FlattenGpoCompare -LeftCsv $leftCsv -RightCsv $rightCsv -OutCsv $choices.ComparePath
@@ -2567,8 +2577,8 @@ switch ($Mode) {
     Invoke-FlattenXml -OutDir $OutDir
   }
   'XmlExportAndFlatten' {
-    Invoke-XmlExport -OutDir $OutDir -Throttle $Throttle -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
-    Invoke-FlattenXml -OutDir $OutDir
+    $exported = Invoke-XmlExport -OutDir $OutDir -Throttle $Throttle -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
+    Invoke-FlattenXml -OutDir $OutDir -XmlFiles $exported
   }
   'RegistrySnapshotExport' {
     Invoke-RegistrySnapshotExport -Folder $OutDir -IncludeGpoName $IncludeGpoName -IncludeGpoNameRegex $IncludeGpoNameRegex -IncludeGpoId $IncludeGpoId
