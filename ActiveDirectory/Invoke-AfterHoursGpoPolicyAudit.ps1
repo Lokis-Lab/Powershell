@@ -291,6 +291,12 @@ function Expand-ZipIfNeeded {
     if ($zipUtc -gt $markerUtc) { $needsExpand = $true }
   }
   if ($needsExpand) {
+    # Expand-Archive -Force updates files in the archive but does not remove
+    # files dropped from newer template packages; clear first to avoid stale baselines.
+    if (Test-Path -LiteralPath $DestinationFolder) {
+      Get-ChildItem -LiteralPath $DestinationFolder -Force |
+        Remove-Item -Recurse -Force -ErrorAction Stop
+    }
     Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
     Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
   }

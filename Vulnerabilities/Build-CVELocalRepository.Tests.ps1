@@ -35,4 +35,18 @@ Describe 'Build-CVELocalRepository script' {
                 [ref]$null,
                 [ref]$null) } | Should -Not -Throw
     }
+
+    It 'wraps vulnerabilities in an array before foreach in Store-CVEInCSV' {
+        $scriptPath = Join-Path $scriptRoot 'Build-CVELocalRepository.ps1'
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors)
+        $storeFunction = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                $node.Name -eq 'Store-CVEInCSV'
+        }, $true)
+
+        $storeFunction.Body.Extent.Text | Should -Match 'foreach \(\$cve in @\(\$CVERecords\.vulnerabilities\)\)'
+    }
 }

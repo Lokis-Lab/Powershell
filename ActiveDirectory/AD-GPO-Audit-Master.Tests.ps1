@@ -56,8 +56,37 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Expand-ZipIfNeeded' {
         if ($zipUtc -gt $markerUtc) { $needsExpand = $true }
       }
       if ($needsExpand) {
+        if (Test-Path -LiteralPath $DestinationFolder) {
+          Get-ChildItem -LiteralPath $DestinationFolder -Force |
+            Remove-Item -Recurse -Force -ErrorAction Stop
+        }
         Expand-Archive -Path $ZipPath -DestinationPath $DestinationFolder -Force
         Set-Content -LiteralPath $marker -Value ("Expanded {0}" -f (Get-Date).ToString('o')) -Encoding UTF8
+      }
+    }
+  }
+
+  It 'removes orphaned files when a newer zip drops entries' {
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ("gpo-expand-test-{0}" -f [guid]::NewGuid())
+    $zipPath = Join-Path $root 'template.zip'
+    $dest = Join-Path $root 'extracted'
+    try {
+      New-Item -ItemType Directory -Path $root -Force | Out-Null
+      'keep-me' | Set-Content -LiteralPath (Join-Path $root 'keep.txt') -Encoding UTF8
+      'drop-me' | Set-Content -LiteralPath (Join-Path $root 'orphan.txt') -Encoding UTF8
+      Compress-Archive -Path (Join-Path $root 'keep.txt'), (Join-Path $root 'orphan.txt') -DestinationPath $zipPath -Force
+      Expand-ZipIfNeededForTest -ZipPath $zipPath -DestinationFolder $dest
+      Test-Path -LiteralPath (Join-Path $dest 'orphan.txt') | Should -Be $true
+
+      Start-Sleep -Seconds 2
+      'keep-me-v2' | Set-Content -LiteralPath (Join-Path $root 'keep.txt') -Encoding UTF8
+      Compress-Archive -Path (Join-Path $root 'keep.txt') -DestinationPath $zipPath -Force
+      Expand-ZipIfNeededForTest -ZipPath $zipPath -DestinationFolder $dest
+      Test-Path -LiteralPath (Join-Path $dest 'orphan.txt') | Should -Be $false
+      (Get-Content -LiteralPath (Join-Path $dest 'keep.txt') -Raw).Trim() | Should -Be 'keep-me-v2'
+    } finally {
+      if (Test-Path -LiteralPath $root) {
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
       }
     }
   }
@@ -180,5 +209,22 @@ Describe 'AD-GPO-Audit-Master flatten CSV uniqueness' {
 
     $functionAst | Should -Not -BeNullOrEmpty
     $functionAst.Body.Extent.Text | Should -Match 'Flatten_\{0\}_\{1\}\.csv'
+  }
+
+  It 'returns exported XML paths and can flatten only that export set' {
+    $exportAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-XmlExport'
+    }, $true)
+    $flattenAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-FlattenXml'
+    }, $true)
+
+    $exportAst.Body.Extent.Text | Should -Match 'return \$xmlPaths'
+    $flattenAst.Body.Extent.Text | Should -Match '\[string\[\]\]\$XmlFiles'
+    $flattenAst.Body.Extent.Text | Should -Match 'Get-ChildItem -LiteralPath \$inDir -Filter \*\.xml'
   }
 }
