@@ -810,11 +810,17 @@ function Export-DomainHierarchySnapshot {
     foreach ($link in $linkRows) {
       if ([string]::IsNullOrWhiteSpace($link.GpoId)) { continue }
       if ($gpoReportMap.ContainsKey($link.GpoId)) { continue }
+      $tempPath = $null
       try {
         $reportPath = Join-Path -Path $reportsFolder -ChildPath ("{0}.xml" -f $link.GpoId)
-        Get-GPOReport -Guid $link.GpoId -ReportType Xml -Path $reportPath
+        $tempPath = "$reportPath.tmp"
+        Get-GPOReport -Guid $link.GpoId -ReportType Xml -Path $tempPath
+        Move-Item -LiteralPath $tempPath -Destination $reportPath -Force
         $gpoReportMap[$link.GpoId] = $reportPath
       } catch {
+        if ($tempPath -and (Test-Path -LiteralPath $tempPath)) {
+          Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        }
         Write-Warning "Failed to export GPO report for '$($link.GpoName)' [$($link.GpoId)]: $($_.Exception.Message)"
       }
     }
