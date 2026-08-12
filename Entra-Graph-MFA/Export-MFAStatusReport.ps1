@@ -101,6 +101,13 @@ function Get-LastSignIn {
   }
 }
 
+function Test-HasGraphMethods {
+  # Graph list cmdlets may return $null when empty. In PowerShell, @($null).Count is 1,
+  # so a bare @($result).Count -gt 0 check would falsely treat "no methods" as MFA-enabled.
+  param($Methods)
+  return ($null -ne $Methods -and @($Methods).Count -gt 0)
+}
+
 function Get-MFAEnabled {
   param([Parameter(Mandatory)] [string]$UserId)
 
@@ -108,7 +115,7 @@ function Get-MFAEnabled {
   try {
     if (-not $hasMfa) {
       $auth = Get-MgUserAuthenticationMicrosoftAuthenticatorMethod -UserId $UserId -ErrorAction Stop
-      if ($auth.Count -gt 0) { $hasMfa = $true }
+      if (Test-HasGraphMethods $auth) { $hasMfa = $true }
     }
     if (-not $hasMfa) {
       $phones = Get-MgUserAuthenticationPhoneMethod -UserId $UserId -ErrorAction Stop
@@ -118,20 +125,20 @@ function Get-MFAEnabled {
     }
     if (-not $hasMfa) {
       $fido = Get-MgUserAuthenticationFido2Method -UserId $UserId -ErrorAction Stop
-      if ($fido.Count -gt 0) { $hasMfa = $true }
+      if (Test-HasGraphMethods $fido) { $hasMfa = $true }
     }
     if (-not $hasMfa) {
       $oath = Get-MgUserAuthenticationSoftwareOathMethod -UserId $UserId -ErrorAction Stop
-      if ($oath.Count -gt 0) { $hasMfa = $true }
+      if (Test-HasGraphMethods $oath) { $hasMfa = $true }
     }
     if (-not $hasMfa) {
       $whfb = Get-MgUserAuthenticationWindowsHelloForBusinessMethod -UserId $UserId -ErrorAction Stop
-      if ($whfb.Count -gt 0) { $hasMfa = $true }
+      if (Test-HasGraphMethods $whfb) { $hasMfa = $true }
     }
     if (-not $hasMfa) {
       try {
         $tap = Get-MgUserAuthenticationTemporaryAccessPassMethod -UserId $UserId -ErrorAction Stop
-        if ($tap.Count -gt 0) { $hasMfa = $true }
+        if (Test-HasGraphMethods $tap) { $hasMfa = $true }
       } catch { } # TAP may not exist everywhere
     }
     return $hasMfa
