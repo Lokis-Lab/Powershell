@@ -46,3 +46,31 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit Get-DescendantDns' {
     $result.Count | Should -Be 3
   }
 }
+
+Describe 'Invoke-AfterHoursGpoPolicyAudit GPO report export' {
+  It 'writes GPO reports via a temp file so failed exports preserve prior XML' {
+    $scriptPath = Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    $parseErrors | Should -BeNullOrEmpty
+
+    $exportFunction = $ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Export-DomainHierarchySnapshot'
+    }, $true)
+
+    $exportFunction | Should -Not -BeNullOrEmpty
+    $body = $exportFunction.Body.Extent.Text
+    $body | Should -Match '\$tempPath\s*=\s*"\$reportPath\.tmp"'
+    $body | Should -Match 'Get-GPOReport.*-Path \$tempPath'
+    $body | Should -Match 'Move-Item -LiteralPath \$tempPath -Destination \$reportPath'
+    $body | Should -Match 'Remove-Item -LiteralPath \$tempPath'
+  }
+}
