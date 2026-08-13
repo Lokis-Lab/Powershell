@@ -21,6 +21,34 @@ Describe 'Export-DefenderDevicesAndVulnerabilities script' {
         $items.Count | Should -Be 3
     }
 
+    It 'replaces a stale vulnerabilities CSV when every device returns zero rows' {
+        $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "defender-vuln-export-empty-$PID"
+        New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+        try {
+            $finalPath = Join-Path $tempRoot 'Vulnerabilities.csv'
+            'DeviceId,ComputerName,VulnerabilityId,Severity,CveId,Title' | Set-Content -LiteralPath $finalPath -Encoding UTF8
+            'stale-device,stale-host,CVE-1999-0001,High,CVE-1999-0001,Old vuln' | Add-Content -LiteralPath $finalPath -Encoding UTF8
+
+            $tempPath = Join-Path $tempRoot 'Vulnerabilities.csv.12345.tmp'
+            $failedDevices = [System.Collections.Generic.List[string]]::new()
+
+            if (Test-Path -LiteralPath $tempPath) {
+                Move-Item -LiteralPath $tempPath -Destination $finalPath -Force
+            } elseif ($failedDevices.Count -gt 0) {
+                throw "All device vulnerability queries failed."
+            } else {
+                'DeviceId,ComputerName,VulnerabilityId,Severity,CveId,Title' |
+                    Set-Content -LiteralPath $finalPath -Encoding UTF8 -Force
+            }
+
+            @(Get-Content -LiteralPath $finalPath) | Should -Be @(
+                'DeviceId,ComputerName,VulnerabilityId,Severity,CveId,Title'
+            )
+        } finally {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It 'preserves the prior vulnerabilities CSV when any device export fails' {
         $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "defender-vuln-export-$PID"
         New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
