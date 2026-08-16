@@ -95,7 +95,7 @@ Describe 'Get-MFAUserReport-Graph script' {
     $userLoop = $script:Ast.Find({
       param($node)
       $node -is [System.Management.Automation.Language.ForEachStatementAst] -and
-        $node.Variable.Expression.Extent.Text -eq '$Users'
+        $node.Condition.Extent.Text -eq '$Users'
     }, $true)
 
     $userLoop | Should -Not -BeNullOrEmpty
