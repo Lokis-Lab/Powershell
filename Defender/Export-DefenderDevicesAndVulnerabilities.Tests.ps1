@@ -48,4 +48,15 @@ Describe 'Export-DefenderDevicesAndVulnerabilities script' {
             Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
+
+    It 'replaces stale vulnerabilities CSV with header-only output when all devices succeed with zero vulns' {
+        $scriptPath = Join-Path $PSScriptRoot 'Export-DefenderDevicesAndVulnerabilities.ps1'
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors)
+
+        $ast.EndBlock.Extent.Text | Should -Match 'All device queries succeeded but none returned vulnerabilities'
+        $ast.EndBlock.Extent.Text | Should -Match 'failedDevices\.Count -gt 0'
+        $ast.EndBlock.Extent.Text | Should -Match 'DeviceId,ComputerName,VulnerabilityId,Severity,CveId,Title'
+    }
 }

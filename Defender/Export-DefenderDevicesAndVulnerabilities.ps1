@@ -110,14 +110,18 @@ foreach ($device in $devices) {
   }
 }
 
-if (Test-Path -LiteralPath $vulnTempPath) {
-  if ($failedDevices.Count -eq 0) {
-    Move-Item -LiteralPath $vulnTempPath -Destination $VulnerabilitiesCsvPath -Force
-    Write-Host "Vulnerabilities exported to $VulnerabilitiesCsvPath" -ForegroundColor Green
-  } else {
+if ($failedDevices.Count -gt 0) {
+  if (Test-Path -LiteralPath $vulnTempPath) {
     Remove-Item -LiteralPath $vulnTempPath -Force
-    throw "Vulnerability export incomplete: $($failedDevices.Count) device(s) failed. Prior export at '$VulnerabilitiesCsvPath' was preserved. Failed devices: $($failedDevices -join ', ')"
   }
-} elseif ($failedDevices.Count -gt 0) {
-  throw "All device vulnerability queries failed ($($failedDevices.Count) device(s))."
+  throw "Vulnerability export incomplete: $($failedDevices.Count) device(s) failed. Prior export at '$VulnerabilitiesCsvPath' was preserved. Failed devices: $($failedDevices -join ', ')"
 }
+
+if (Test-Path -LiteralPath $vulnTempPath) {
+  Move-Item -LiteralPath $vulnTempPath -Destination $VulnerabilitiesCsvPath -Force
+} else {
+  # All device queries succeeded but none returned vulnerabilities — replace with header-only CSV
+  # so a prior export is not left stale after remediation.
+  'DeviceId,ComputerName,VulnerabilityId,Severity,CveId,Title' | Set-Content -LiteralPath $VulnerabilitiesCsvPath -Encoding UTF8
+}
+Write-Host "Vulnerabilities exported to $VulnerabilitiesCsvPath" -ForegroundColor Green

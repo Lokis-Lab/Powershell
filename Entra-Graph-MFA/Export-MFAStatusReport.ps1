@@ -149,6 +149,10 @@ function Get-MFAEnabled {
   }
 }
 
+if ($targetUsers.Count -eq 0) {
+  throw "No users to process. Prior reports at '$UserDetailsOut' and '$MFAReportOut' were preserved."
+}
+
 # --- Collect details
 $userDetails = New-Object System.Collections.Generic.List[object]
 $mfaStatus   = New-Object System.Collections.Generic.List[object]
