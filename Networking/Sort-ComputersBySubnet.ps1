@@ -88,6 +88,10 @@ $sortedComputers = foreach ($computer in $computers) {
 }
 
 # --- Export results
+if (-not $sortedComputers -or @($sortedComputers).Count -eq 0) {
+  throw "No computers with parseable IP addresses were found. Prior export at '$OutputFile' was preserved."
+}
+
 $sortedComputers | Export-Csv -Path $OutputFile -NoTypeInformation -Encoding UTF8 -Force
 
 Write-Host "Sorted computers have been exported to $OutputFile" -ForegroundColor Green
