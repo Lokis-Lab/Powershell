@@ -120,4 +120,10 @@ if (Test-Path -LiteralPath $vulnTempPath) {
   }
 } elseif ($failedDevices.Count -gt 0) {
   throw "All device vulnerability queries failed ($($failedDevices.Count) device(s))."
+} else {
+  # Every device query succeeded but returned zero rows. Replace any prior export so
+  # remediated tenants do not keep stale vulnerability data from earlier runs.
+  'DeviceId,ComputerName,VulnerabilityId,Severity,CveId,Title' |
+    Set-Content -LiteralPath $VulnerabilitiesCsvPath -Encoding UTF8 -Force
+  Write-Host "No vulnerabilities found; replaced prior export at $VulnerabilitiesCsvPath with an empty result set." -ForegroundColor Green
 }
