@@ -71,19 +71,32 @@ foreach ($User in $Users) {
 
     try {
         $methods = Get-MgUserAuthenticationMethod -UserId $User.Id -ErrorAction Stop
-        if ($methods) {
-            $MFAState = "Enabled"
-            foreach ($m in $methods) {
-                switch ($m.AdditionalProperties["@odata.type"]) {
-                    "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" { $MFADefaultMethod = "Microsoft Authenticator app" }
-                    "#microsoft.graph.phoneAuthenticationMethod" {
-                        $MFADefaultMethod = "Phone (SMS/Call)"
-                        $MFAPhoneNumber   = $m.PhoneNumber
-                    }
-                    "#microsoft.graph.fido2AuthenticationMethod" { $MFADefaultMethod = "FIDO2 Security Key" }
-                    "#microsoft.graph.windowsHelloForBusinessAuthenticationMethod" { $MFADefaultMethod = "Windows Hello for Business" }
-                    "#microsoft.graph.softwareOathAuthenticationMethod" { $MFADefaultMethod = "Authenticator app or OATH token" }
-                    "#microsoft.graph.temporaryAccessPassAuthenticationMethod" { $MFADefaultMethod = "Temporary Access Pass" }
+        foreach ($m in @($methods)) {
+            switch ($m.AdditionalProperties["@odata.type"]) {
+                "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" {
+                    $MFAState = "Enabled"
+                    $MFADefaultMethod = "Microsoft Authenticator app"
+                }
+                "#microsoft.graph.phoneAuthenticationMethod" {
+                    $MFAState = "Enabled"
+                    $MFADefaultMethod = "Phone (SMS/Call)"
+                    $MFAPhoneNumber   = $m.PhoneNumber
+                }
+                "#microsoft.graph.fido2AuthenticationMethod" {
+                    $MFAState = "Enabled"
+                    $MFADefaultMethod = "FIDO2 Security Key"
+                }
+                "#microsoft.graph.windowsHelloForBusinessAuthenticationMethod" {
+                    $MFAState = "Enabled"
+                    $MFADefaultMethod = "Windows Hello for Business"
+                }
+                "#microsoft.graph.softwareOathAuthenticationMethod" {
+                    $MFAState = "Enabled"
+                    $MFADefaultMethod = "Authenticator app or OATH token"
+                }
+                "#microsoft.graph.temporaryAccessPassAuthenticationMethod" {
+                    $MFAState = "Enabled"
+                    $MFADefaultMethod = "Temporary Access Pass"
                 }
             }
         }
