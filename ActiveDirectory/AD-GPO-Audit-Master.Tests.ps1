@@ -224,7 +224,9 @@ Describe 'AD-GPO-Audit-Master flatten CSV uniqueness' {
     }, $true)
 
     $exportAst.Body.Extent.Text | Should -Match 'return \$xmlPaths'
+    $exportAst.Body.Extent.Text | Should -Match 'Write-XmlExportManifest'
     $flattenAst.Body.Extent.Text | Should -Match '\[string\[\]\]\$XmlFiles'
+    $flattenAst.Body.Extent.Text | Should -Match 'Get-XmlExportManifestPaths'
     $flattenAst.Body.Extent.Text | Should -Match 'Get-ChildItem -LiteralPath \$inDir -Filter \*\.xml'
   }
 }

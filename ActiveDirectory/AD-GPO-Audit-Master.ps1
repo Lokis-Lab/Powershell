@@ -1362,6 +1362,28 @@ function Select-Gpos {
 }
 
 # -------------------- XML export (subset of GPOs) --------------------
+function Get-XmlExportManifestPath {
+  param([Parameter(Mandatory)][string]$ExportDir)
+  Join-Path $ExportDir '.last-xml-export.json'
+}
+
+function Write-XmlExportManifest {
+  param(
+    [Parameter(Mandatory)][string]$ExportDir,
+    [Parameter(Mandatory)][string[]]$XmlPaths
+  )
+  $manifestPath = Get-XmlExportManifestPath -ExportDir $ExportDir
+  ($XmlPaths | ConvertTo-Json -Compress) | Set-Content -LiteralPath $manifestPath -Encoding UTF8 -Force
+}
+
+function Get-XmlExportManifestPaths {
+  param([Parameter(Mandatory)][string]$ExportDir)
+  $manifestPath = Get-XmlExportManifestPath -ExportDir $ExportDir
+  if (-not (Test-Path -LiteralPath $manifestPath)) { return @() }
+  $paths = @(Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json)
+  return @($paths | Where-Object { $_ -and (Test-Path -LiteralPath $_) })
+}
+
 function Invoke-XmlExport {
   param(
     [Parameter(Mandatory)][string]$OutDir,
@@ -1431,6 +1453,7 @@ function Invoke-XmlExport {
   if ($xmlPaths.Count -eq 0) {
     throw "No GPO XML files were exported successfully."
   }
+  Write-XmlExportManifest -ExportDir $exportDir -XmlPaths $xmlPaths
   Write-Host "Exported $($xmlPaths.Count) GPO XML files to: $exportDir" -ForegroundColor Cyan
   return $xmlPaths
 }
@@ -2256,7 +2279,12 @@ function Invoke-FlattenXml {
       else { throw "Exported XML not found: $_" }
     })
   } else {
-    $xmlFiles = @(Get-ChildItem -LiteralPath $inDir -Filter *.xml -File -ErrorAction Stop)
+    $manifestPaths = Get-XmlExportManifestPaths -ExportDir $inDir
+    if ($manifestPaths.Count -gt 0) {
+      $xmlFiles = @($manifestPaths | ForEach-Object { Get-Item -LiteralPath $_ })
+    } else {
+      $xmlFiles = @(Get-ChildItem -LiteralPath $inDir -Filter *.xml -File -ErrorAction Stop)
+    }
   }
   if ($xmlFiles.Count -eq 0) { throw "No XML files found in $inDir" }
 
