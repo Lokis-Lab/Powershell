@@ -51,6 +51,31 @@ catch {
   throw "Failed to connect to Microsoft Graph: $($_.Exception.Message)"
 }
 
+function Test-IsMfaAuthenticationMethod {
+  param($Method)
+
+  if ($null -eq $Method) { return $false }
+  $type = $Method.AdditionalProperties['@odata.type']
+  if ([string]::IsNullOrWhiteSpace($type)) { return $false }
+
+  switch ($type) {
+    '#microsoft.graph.microsoftAuthenticatorAuthenticationMethod' { return $true }
+    '#microsoft.graph.fido2AuthenticationMethod' { return $true }
+    '#microsoft.graph.windowsHelloForBusinessAuthenticationMethod' { return $true }
+    '#microsoft.graph.softwareOathAuthenticationMethod' { return $true }
+    '#microsoft.graph.temporaryAccessPassAuthenticationMethod' { return $true }
+    '#microsoft.graph.phoneAuthenticationMethod' { return [bool]$Method.PhoneNumber }
+    default { return $false }
+  }
+}
+
+function Get-MfaAuthenticationMethods {
+  param($Methods)
+
+  if ($null -eq $Methods) { return @() }
+  return @($Methods | Where-Object { Test-IsMfaAuthenticationMethod $_ })
+}
+
 Write-Host "Finding Azure Active Directory Accounts..." -ForegroundColor Cyan
 
 # --- Get all non-guest users
@@ -71,9 +96,10 @@ foreach ($User in $Users) {
 
     try {
         $methods = Get-MgUserAuthenticationMethod -UserId $User.Id -ErrorAction Stop
-        if ($methods) {
+        $mfaMethods = Get-MfaAuthenticationMethods -Methods $methods
+        if ($mfaMethods.Count -gt 0) {
             $MFAState = "Enabled"
-            foreach ($m in $methods) {
+            foreach ($m in $mfaMethods) {
                 switch ($m.AdditionalProperties["@odata.type"]) {
                     "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" { $MFADefaultMethod = "Microsoft Authenticator app" }
                     "#microsoft.graph.phoneAuthenticationMethod" {
