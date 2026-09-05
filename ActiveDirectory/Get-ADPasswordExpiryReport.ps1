@@ -52,7 +52,12 @@ $results = foreach ($user in $users) {
 # --- Display results
 $results | Format-Table -AutoSize
 
-# --- Export results to CSV
-$results | Export-Csv -Path $OutputCsv -NoTypeInformation -Encoding UTF8
+# --- Export results to CSV (do not overwrite a prior export when nothing was produced)
+$rows = @($results | Where-Object { $_ })
+if ($rows.Count -eq 0) {
+    throw "No password expiry rows were produced (empty user list). Prior export at '$OutputCsv' was preserved."
+}
+
+$rows | Export-Csv -Path $OutputCsv -NoTypeInformation -Encoding UTF8
 
 Write-Host "Password expiry report exported to $OutputCsv" -ForegroundColor Green
