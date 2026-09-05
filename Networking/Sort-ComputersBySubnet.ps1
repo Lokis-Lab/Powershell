@@ -87,7 +87,12 @@ $sortedComputers = foreach ($computer in $computers) {
     }
 }
 
-# --- Export results
-$sortedComputers | Export-Csv -Path $OutputFile -NoTypeInformation -Encoding UTF8 -Force
+# --- Export results (do not overwrite a prior export when nothing was produced)
+$rows = @($sortedComputers | Where-Object { $_ })
+if ($rows.Count -eq 0) {
+    throw "No sortable computer rows were produced (empty input or no parseable IP addresses). Prior export at '$OutputFile' was preserved."
+}
+
+$rows | Export-Csv -Path $OutputFile -NoTypeInformation -Encoding UTF8 -Force
 
 Write-Host "Sorted computers have been exported to $OutputFile" -ForegroundColor Green
