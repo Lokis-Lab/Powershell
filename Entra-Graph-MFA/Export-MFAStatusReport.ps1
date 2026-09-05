@@ -86,6 +86,11 @@ if (Test-Path -LiteralPath $InputFile) {
   $targetUsers = Get-MgUser -All -Property "id,displayName,userPrincipalName,createdDateTime"
 }
 
+$targetUsers = @($targetUsers | Where-Object { $_ })
+if ($targetUsers.Count -eq 0) {
+  throw "No users resolved for MFA export. Prior reports at '$UserDetailsOut' and '$MFAReportOut' were preserved."
+}
+
 # --- Functions
 function Get-LastSignIn {
   param([string]$UserPrincipalName)
