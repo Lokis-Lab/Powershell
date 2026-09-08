@@ -49,4 +49,10 @@ Describe 'Get-MFAUserReport-Graph script' {
     $script:Ast.Extent.Text | Should -Match '\$mfaMethods\.Count -gt 0'
     $script:Ast.Extent.Text | Should -Not -Match 'if\s*\(\s*\$methods\s*\)'
   }
+
+  It 'throws instead of overwriting the CSV when no report rows are produced' {
+    $script:Ast.Extent.Text | Should -Match '\$Report\.Count -eq 0'
+    $script:Ast.Extent.Text | Should -Match 'Prior export at'
+    $script:Ast.Extent.Text | Should -Match 'throw'
+  }
 }
