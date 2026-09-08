@@ -141,7 +141,11 @@ foreach ($User in $Users) {
     $Report.Add($ReportLine)
 }
 
-# --- Export results
+# --- Export results (do not overwrite a prior export when nothing was produced)
+if ($Report.Count -eq 0) {
+    throw "No MFA report rows were produced (empty user list). Prior export at '$OutputCsv' was preserved."
+}
+
 Write-Host "Exporting report to $OutputCsv" -ForegroundColor Green
 
 $Report | Sort-Object UserPrincipalName |
