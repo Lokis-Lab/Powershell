@@ -228,3 +228,34 @@ Describe 'AD-GPO-Audit-Master flatten CSV uniqueness' {
     $flattenAst.Body.Extent.Text | Should -Match 'Get-ChildItem -LiteralPath \$inDir -Filter \*\.xml'
   }
 }
+
+Describe 'Invoke-SearchGpoSettings CSV export safety' {
+  BeforeAll {
+    $scriptPath = Join-Path $PSScriptRoot 'AD-GPO-Audit-Master.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$tokens,
+      [ref]$parseErrors
+    )
+
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+      throw ($parseErrors | ForEach-Object { $_.Message } | Out-String)
+    }
+  }
+
+  It 'throws instead of overwriting the search CSV when no rows match' {
+    $functionAst = $script:Ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Invoke-SearchGpoSettings'
+    }, $true)
+
+    $functionAst | Should -Not -BeNullOrEmpty
+    $body = $functionAst.Body.Extent.Text
+    $body | Should -Match '\$sorted\.Count -eq 0'
+    $body | Should -Match 'Prior export at'
+    $body | Should -Match 'throw'
+  }
+}

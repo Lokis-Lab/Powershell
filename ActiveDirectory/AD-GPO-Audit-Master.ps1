@@ -2228,6 +2228,9 @@ function Invoke-SearchGpoSettings {
   Write-Host ("Found {0} matching row(s)." -f $sorted.Count) -ForegroundColor Cyan
 
   if ($SearchCsvOut) {
+    if ($sorted.Count -eq 0) {
+      throw "No matching GPO settings found. Prior export at '$SearchCsvOut' was preserved."
+    }
     $parent = Split-Path -Parent $SearchCsvOut
     if ($parent -and -not (Test-Path -LiteralPath $parent)) {
       New-Item -ItemType Directory -Path $parent -Force | Out-Null
