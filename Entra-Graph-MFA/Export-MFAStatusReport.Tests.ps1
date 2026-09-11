@@ -82,4 +82,10 @@ Describe 'Export-MFAStatusReport script' {
     Test-HasGraphMethods $one | Should -BeTrue
     Test-HasGraphMethods $many | Should -BeTrue
   }
+
+  It 'throws instead of overwriting MFA CSVs when no users resolve' {
+    $script:Ast.Extent.Text | Should -Match '\$targetUsers\.Count -eq 0'
+    $script:Ast.Extent.Text | Should -Match 'Prior reports at'
+    $script:Ast.Extent.Text | Should -Match 'throw'
+  }
 }
