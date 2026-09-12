@@ -31,4 +31,17 @@ Describe 'Invoke-LapsPasswordReset computer list handling' {
     $switchText | Should -Match '\$computers\s*=\s*@\(Get-ADComputer'
     $switchText | Should -Match '\$computers\s*=\s*@\(Import-Csv'
   }
+
+  It 'throws instead of overwriting the CSV when no results are produced' {
+    $scriptPath = Join-Path $PSScriptRoot 'Invoke-LapsPasswordReset.ps1'
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+      $scriptPath,
+      [ref]$null,
+      [ref]$null
+    )
+
+    $ast.Extent.Text | Should -Match '\$rows\.Count -eq 0'
+    $ast.Extent.Text | Should -Match 'Prior export at'
+    $ast.Extent.Text | Should -Match 'throw'
+  }
 }

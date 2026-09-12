@@ -1235,16 +1235,22 @@ Write-Host ("Scoped containers: {0}; Scoped GPOs: {1}" -f $targetDns.Count, $uni
 
 Write-Stage "Comparing master template against scoped GPOs"
 $diffRows = [System.Collections.Generic.List[object]]::new()
+$comparedGpoCount = 0
 foreach ($gpoId in $uniqueScopedGpoIds) {
   if (-not $snapshot.ReportMap.ContainsKey($gpoId)) {
     Write-Warning "No report XML was exported for GPO id $gpoId; skipping."
     continue
   }
+  $comparedGpoCount++
   $xmlPath = $snapshot.ReportMap[$gpoId]
   $domainRows = Get-GpoRowsFromReportXml -XmlPath $xmlPath -Source 'Domain' -TemplatePackage 'Domain'
   $gpoName = ($scopedLinks | Where-Object { $_.GpoId -eq $gpoId } | Select-Object -First 1).GpoName
   $gpoDiffs = Compare-MasterToGpoRows -MasterRows $masterRows -DomainRows $domainRows -ContainerDn $TargetContainerDn -GpoName $gpoName -GpoId $gpoId
   foreach ($d in $gpoDiffs) { [void]$diffRows.Add($d) }
+}
+
+if ($comparedGpoCount -eq 0) {
+  throw "No GPO report XML was available for comparison; prior diff outputs were not modified."
 }
 
 $diffCsvPath = Join-Path -Path $diffFolder -ChildPath 'Master-vs-Domain.diff.csv'
