@@ -597,12 +597,12 @@ function Add-ADAccountStatus {
 
         if (-not [string]::IsNullOrWhiteSpace($identityValue)) {
             $email = $identityValue
-            $sam = ($email -split "@")[0]
             $escapedEmail = $email -replace "'", "''"
-            $escapedSam = $sam -replace "'", "''"
 
             $adParams = @{
-                Filter      = "UserPrincipalName -eq '$escapedEmail' -or SamAccountName -eq '$escapedSam' -or Mail -eq '$escapedEmail'"
+                # Match UPN/Mail only. SamAccountName from the email local-part can collide with
+                # unrelated AD accounts and hide real non-existent recipient findings.
+                Filter      = "UserPrincipalName -eq '$escapedEmail' -or Mail -eq '$escapedEmail'"
                 Properties  = @("Enabled", "Mail", "SamAccountName", "UserPrincipalName", "DisplayName", "DistinguishedName")
                 ErrorAction = "SilentlyContinue"
             }
