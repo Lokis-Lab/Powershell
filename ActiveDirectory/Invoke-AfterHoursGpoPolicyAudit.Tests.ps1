@@ -94,3 +94,15 @@ Describe 'Invoke-AfterHoursGpoPolicyAudit GPO report export' {
     $body | Should -Match 'Remove-Item -LiteralPath \$tempPath'
   }
 }
+
+Describe 'Invoke-AfterHoursGpoPolicyAudit diff export' {
+  It 'throws when no GPO reports were exported so prior diff CSVs are preserved' {
+    $scriptPath = Join-Path $PSScriptRoot 'Invoke-AfterHoursGpoPolicyAudit.ps1'
+    $source = Get-Content -LiteralPath $scriptPath -Raw
+
+    $source | Should -Match '\$comparedGpoCount'
+    $source | Should -Match 'if \(\$comparedGpoCount -eq 0\)'
+    $source | Should -Match 'prior diff outputs were not modified'
+    ($source.IndexOf('if ($comparedGpoCount -eq 0)')) | Should -BeLessThan ($source.IndexOf('Master-vs-Domain.diff.csv'))
+  }
+}
