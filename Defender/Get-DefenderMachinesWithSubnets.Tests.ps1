@@ -43,6 +43,18 @@ Describe 'Get-DefenderMachinesWithSubnets script' {
     $ipv4Addresses.Count | Should -BeGreaterThan 0
   }
 
+  It 'rethrows failures so scheduled tasks do not treat errors as success' {
+    $scriptPath = Join-Path $PSScriptRoot 'Get-DefenderMachinesWithSubnets.ps1'
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$null, [ref]$null)
+    $catchAst = $ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.CatchClauseAst]
+    }, $true)
+
+    $catchAst | Should -Not -BeNullOrEmpty
+    $catchAst.Body.Extent.Text | Should -Match 'throw'
+  }
+
   It 'throws instead of overwriting the CSV when no machines match subnet mapping' {
     $scriptPath = Join-Path $PSScriptRoot 'Get-DefenderMachinesWithSubnets.ps1'
     $tokens = $null
