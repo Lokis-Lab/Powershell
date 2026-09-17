@@ -57,7 +57,7 @@ try {
 }
 catch {
   Write-Host "Failed to start sync on ${ServerName}: $($_.Exception.Message)" -ForegroundColor Red
-  return
+  throw
 }
 
 # Wait to allow the cycle to register
@@ -79,6 +79,7 @@ try {
 }
 catch {
   Write-Host "Failed to retrieve scheduler status: $($_.Exception.Message)" -ForegroundColor Red
+  throw
 }
 
 Write-Host ""
