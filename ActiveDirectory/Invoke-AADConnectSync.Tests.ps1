@@ -21,4 +21,16 @@ Describe 'Invoke-AADConnectSync script' {
   It 'uses braced variable syntax before colons in error messages' {
     $script:Ast.Extent.Text | Should -Match '\$\{ServerName\}:'
   }
+
+  It 'rethrows sync and scheduler failures so scheduled tasks do not treat errors as success' {
+    $catchBlocks = $script:Ast.FindAll({
+      param($node)
+      $node -is [System.Management.Automation.Language.CatchClauseAst]
+    }, $true)
+
+    $catchBlocks.Count | Should -BeGreaterOrEqual 2
+    foreach ($catch in $catchBlocks) {
+      $catch.Body.Extent.Text | Should -Match 'throw'
+    }
+  }
 }
