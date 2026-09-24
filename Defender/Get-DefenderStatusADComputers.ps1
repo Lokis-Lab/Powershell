@@ -91,7 +91,12 @@ $results = foreach ($computerName in $computers) {
     $computerStatus
 }
 
-# --- Export results
-$results | Export-Csv -Path $OutputCsvPath -NoTypeInformation -Encoding UTF8 -Force
+# --- Export results (do not overwrite a prior export when nothing was produced)
+$rows = @($results | Where-Object { $_ })
+if ($rows.Count -eq 0) {
+    throw "No Defender status rows were produced (empty computer list). Prior export at '$OutputCsvPath' was preserved."
+}
+
+$rows | Export-Csv -Path $OutputCsvPath -NoTypeInformation -Encoding UTF8 -Force
 
 Write-Host "Results exported to $OutputCsvPath" -ForegroundColor Green
