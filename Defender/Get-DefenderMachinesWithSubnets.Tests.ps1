@@ -59,4 +59,20 @@ Describe 'Get-DefenderMachinesWithSubnets script' {
     $tryAst.Extent.Text | Should -Match '\$rows\.Count -eq 0'
     $tryAst.Extent.Text | Should -Match 'throw'
   }
+
+  It 'rethrows after logging so scheduled tasks see a non-zero exit code' {
+    $scriptPath = Join-Path $PSScriptRoot 'Get-DefenderMachinesWithSubnets.ps1'
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors)
+
+    $catchAst = $ast.Find({
+      param($node)
+      $node -is [System.Management.Automation.Language.CatchClauseAst] -and
+        $node.Extent.Text -match 'Error: \$\(\$_.Exception\.Message\)'
+    }, $true)
+
+    $catchAst | Should -Not -BeNullOrEmpty
+    $catchAst.Extent.Text | Should -Match '(?m)^\s*throw\s*;?\s*$'
+  }
 }
