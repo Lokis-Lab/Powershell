@@ -54,8 +54,8 @@ param(
     [switch]$WeeklyOnlyOnSunday = $true,
 
     # 14-day recipient validation investigation controls
-    [string]$InvestigateDomain = "flsenate.gov",
-    [string]$InvestigateUpnSuffix = "FLSEN.GOV",
+    [string]$InvestigateDomain = "example.com",
+    [string]$InvestigateUpnSuffix = "EXAMPLE.COM",
     [switch]$IncludeQuarantine = $true,
     [string]$AdSearchBase,
     [string]$AdServer
@@ -76,7 +76,7 @@ if (-not $TenantId -or -not $ClientId -or -not $ClientSecret) {
 
 # Internal domains to define "Sent by us" and "Internal vs External"
 # NOTE: include only the domains that should count as internal.
-$InternalDomains = @("flsenate.gov", "flsen.gov")
+$InternalDomains = @("example.com", "example.net")
 $InternalDomainsDyn = ($InternalDomains | ForEach-Object { '"' + $_ + '"' }) -join ","
 $DomainsLabel = ($InternalDomains -join ", ")
 

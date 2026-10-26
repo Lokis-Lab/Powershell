@@ -48,7 +48,7 @@ $subnetMapping = @{
   "10.120.26."   = @{ Scope = "10.120.26.0";   SubnetName = "SCCM Production" }
   "10.120.32."   = @{ Scope = "10.120.32.0";   SubnetName = "Backup - Veeam Storage" }
   "192.168.122." = @{ Scope = "192.168.122.0"; SubnetName = "VM Desktops Internal" }
-  "207.126.11."  = @{ Scope = "207.126.11.0";  SubnetName = "Senate Chamber" }
+  "203.0.113."   = @{ Scope = "203.0.113.0";   SubnetName = "Example Site" }
 }
 
 try {
