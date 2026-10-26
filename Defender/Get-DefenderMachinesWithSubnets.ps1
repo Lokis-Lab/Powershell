@@ -45,10 +45,10 @@ $MachinesEndpoint = "$ApiBase/api/machines"  # <-- changes by cloud
 
 # --- Example subnet mapping (edit for your environment)
 $subnetMapping = @{
-  "192.0.2."     = @{ Scope = "192.0.2.0";     SubnetName = "SCCM Production" }
-  "198.51.100."  = @{ Scope = "198.51.100.0";  SubnetName = "Backup - Veeam Storage" }
-  "198.18.0."    = @{ Scope = "198.18.0.0";    SubnetName = "VM Desktops Internal" }
-  "203.0.113."   = @{ Scope = "203.0.113.0";   SubnetName = "Example Site" }
+  "192.0.2."     = @{ Scope = "192.0.2.0";     SubnetName = "Example Subnet 1" }
+  "198.51.100."  = @{ Scope = "198.51.100.0";  SubnetName = "Example Subnet 2" }
+  "198.18.0."    = @{ Scope = "198.18.0.0";    SubnetName = "Example Subnet 3" }
+  "203.0.113."   = @{ Scope = "203.0.113.0";   SubnetName = "Example Subnet 4" }
 }
 
 try {
