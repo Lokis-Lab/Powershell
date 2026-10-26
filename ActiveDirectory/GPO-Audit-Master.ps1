@@ -812,7 +812,7 @@ function Get-AdOuLeafDisplayName {
   <#
   .SYNOPSIS
     Short OU label: leaf name only (AD Name / last segment of canonical), not the full path.
-    Domain NC uses DNS root (e.g. FLSEN.GOV).
+    Domain NC uses DNS root (e.g. corp.example.com).
   #>
   param(
     $AdObject,

@@ -1,6 +1,6 @@
 # ==========================================================
 # Title: Defender Internal Users Summary (Cisco ESA Replacement)
-# Author: Kevin Hilt (FLSEN Security)
+# Author: Kevin Hilt
 # Purpose:
 #   Replaces Cisco ESA "Internal Users Summary" report using
 #   Microsoft Defender Advanced Hunting API (GCC).
@@ -75,7 +75,7 @@ if (-not $TenantId -or -not $ClientId -or -not $ClientSecret) {
 }
 
 # Internal domains to define "Sent by us" and "Internal vs External"
-# NOTE: explicitly excludes leg.state.fl.us
+# NOTE: include only the domains that should count as internal.
 $InternalDomains = @("flsenate.gov", "flsen.gov")
 $InternalDomainsDyn = ($InternalDomains | ForEach-Object { '"' + $_ + '"' }) -join ","
 $DomainsLabel = ($InternalDomains -join ", ")
