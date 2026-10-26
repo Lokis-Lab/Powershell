@@ -55,7 +55,7 @@
   Optional DNS suffix list considered "work network". If detected, script exits.
 
 .PARAMETER WorkIpv4Prefixes
-  Optional IPv4 prefixes considered "work network" (e.g. "10.", "192.168.40.").
+  Optional IPv4 prefixes considered "work network" (e.g. "10.", "192.0.2.").
 
 .PARAMETER StartHour24
   After-hours start in 24-hour clock. Default 17 (5 PM).
@@ -74,7 +74,7 @@
     -OutputRoot "C:\GpoAudit\AfterHours" `
     -MergeMode Interactive `
     -WorkDnsSuffixes "corp.contoso.com" `
-    -WorkIpv4Prefixes "10.","172.16." `
+    -WorkIpv4Prefixes "192.0.2.","198.51.100." `
     -InteractiveRiskReview
 
 .NOTES
