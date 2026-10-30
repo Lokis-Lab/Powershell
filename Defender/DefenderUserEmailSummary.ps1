@@ -957,6 +957,8 @@ $OutboundTop       = Invoke-DefenderQuery $DailyQ.OutboundTopSenders
 $OutboundRisk      = Invoke-DefenderQuery $DailyQ.OutboundExternalBySender
 $BillSummary       = Invoke-DefenderQuery $DailyQ.BillBlastSummary
 $BillTopRecipients = Invoke-DefenderQuery $DailyQ.BillBlastTopRecipients
+$recipientValidationRows = Get-RecipientValidationRows -LookbackDays 14
+$recipientValidationCount = @($recipientValidationRows).Count
 
 # Inbound % for category table (and pie)
 $TotalInbound = ($InboundCategory | Measure-Object Messages -Sum).Sum
@@ -1089,6 +1091,18 @@ $(Convert-ToHtmlTable $OutboundTop @("From","Messages") 760)
 
 <h2>Outbound Risk Watch: Top External Recipients by Internal Sender</h2>
 $(Convert-ToHtmlTable $OutboundRisk @("From","RecipientEmailAddress","Messages") 980)
+
+<hr class="hr"/>
+
+<h2>Recipient Validation Investigation (Last 14 Days)</h2>
+<p class="small">
+  <b>Domain:</b> $(HtmlEncode $InvestigateDomain) &nbsp;&nbsp;|&nbsp;&nbsp;
+  <b>Rows:</b> $recipientValidationCount
+</p>
+<details class="collapsible" open>
+  <summary>Show/Hide Recipient Validation Table</summary>
+  $(Convert-ToHtmlTable $recipientValidationRows @("Email","Category","DeliveryLocation","AD_Status","Attempts","SenderCount","SamAccount","UPN","RawVariantPreview","SubjectPreview","SenderPreview") 1100)
+</details>
 
 </body>
 </html>
