@@ -73,7 +73,7 @@ On-prem Exchange `New-PSSession -Credential` (Kerberos/Basic to local servers) i
 - **[Export-DefenderDevicesAndVulnerabilities.ps1](Defender/Export-DefenderDevicesAndVulnerabilities.ps1)** — Export Defender for Endpoint devices and their vulnerabilities. Defaults to Commercial; use `-Cloud GCCH` for GCC High.
 - **[Get-DefenderMachinesWithSubnets.ps1](Defender/Get-DefenderMachinesWithSubnets.ps1)** — Map Defender device IPs onto a subnet table. The built-in map is a sample (`Example Subnet 1`–`4` on documentation ranges); edit it for your network. Defaults to Commercial; use `-Cloud GCCH` for GCC High.
 - **[Get-DefenderStatusADComputers.ps1](Defender/Get-DefenderStatusADComputers.ps1)** — Collect Defender Antivirus status from AD computers over WinRM (`Get-MpComputerStatus`) and export CSV.
-- **[DefenderInternalUsersSummary.ps1](Defender/DefenderInternalUsersSummary.ps1)** — Build a daily HTML mail summary from Defender Advanced Hunting, plus a weekly rollup when the report day is Sunday. Optional SharePoint upload. Default domains are placeholders (`example.com` / `example.net`); set them for your tenant.
+- **[DefenderUserEmailSummary.ps1](Defender/DefenderUserEmailSummary.ps1)** — Build a daily HTML mail summary from Defender Advanced Hunting, plus a weekly rollup when the report day is Sunday. The daily report includes a 14-day recipient validation table with AD enrichment, and the weekly report includes a 7-day table. Optional SharePoint upload. Default domains are placeholders (`example.com` / `example.net`); set them for your tenant.
 
 ### `Exchange-Compliance/`
 

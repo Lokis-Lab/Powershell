@@ -1,5 +1,5 @@
 BeforeAll {
-    $script:SourcePath = Join-Path $PSScriptRoot 'DefenderInternalUsersSummary.ps1'
+    $script:SourcePath = Join-Path $PSScriptRoot 'DefenderUserEmailSummary.ps1'
     $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile(
         $script:SourcePath,
         [ref]$null,
