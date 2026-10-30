@@ -1,5 +1,5 @@
 # ==========================================================
-# Title: Defender Internal Users Summary (Cisco ESA Replacement)
+# Title: Defender User Email Summary (Cisco ESA Replacement)
 # Author: Kevin Hilt
 # Purpose:
 #   Replaces Cisco ESA "Internal Users Summary" report using
@@ -53,7 +53,7 @@ param(
     # With DaysBack=1 and a daily morning schedule, this means weekly runs on Monday.
     [switch]$WeeklyOnlyOnSunday = $true,
 
-    # 14-day recipient validation investigation controls
+    # Recipient validation investigation controls
     [string]$InvestigateDomain = "example.com",
     [string]$InvestigateUpnSuffix = "EXAMPLE.COM",
     [switch]$IncludeQuarantine = $true,
@@ -625,6 +625,82 @@ function Add-ADAccountStatus {
     $Records
 }
 
+function Get-RecipientValidationRows {
+    param(
+        [Parameter(Mandatory)][int]$LookbackDays
+    )
+
+    if (-not (Get-Module -Name ActiveDirectory)) {
+        Import-Module ActiveDirectory -ErrorAction Stop
+    }
+
+    $investigationCategoryFilter = if ($IncludeQuarantine) {
+        'Category in ("Non-Existent User", "Blocked (Pre-Resolution)")'
+    } else {
+        'Category == "Non-Existent User"'
+    }
+
+    $investigationKql = @"
+EmailEvents
+| where Timestamp > ago(${LookbackDays}d)
+| where RecipientEmailAddress endswith "@$InvestigateDomain"
+| extend Category = case(
+    LatestDeliveryLocation == "Failed", "Non-Existent User",
+    LatestDeliveryLocation == "Quarantine", "Blocked (Pre-Resolution)",
+    LatestDeliveryLocation == "Inbox", "Delivered",
+    "Other"
+)
+| where $investigationCategoryFilter
+| extend NormalizedRecipientEmailAddress = replace_regex(tolower(RecipientEmailAddress), @"^prvs=[^=]+=", "")
+| summarize
+    Attempts = count(),
+    SenderCount = dcount(SenderFromAddress),
+    Senders = make_set(SenderFromAddress, 20),
+    SenderIPs = make_set(SenderIPv4, 20),
+    Subjects = make_set(Subject, 10),
+    RawEmailVariants = make_set(RecipientEmailAddress, 20)
+by NormalizedRecipientEmailAddress, Category, LatestDeliveryLocation
+| order by Attempts desc
+"@
+
+    $investigationRecords = Invoke-DefenderQuery $investigationKql
+    foreach ($record in $investigationRecords) {
+        Add-Member -InputObject $record -NotePropertyName RecipientEmailAddress -NotePropertyValue $record.NormalizedRecipientEmailAddress -Force
+    }
+
+    $investigationRecords = Add-ADAccountStatus `
+        -Records $investigationRecords `
+        -IdentityProperty "RecipientEmailAddress" `
+        -SearchBase $AdSearchBase `
+        -Server $AdServer
+
+    $recipientValidationRows = foreach ($record in $investigationRecords) {
+        $email = Resolve-NormalizedEmailAddress -Email ([string]$record.NormalizedRecipientEmailAddress)
+        if ([string]::IsNullOrWhiteSpace($email)) { continue }
+        $sam = ($email -split "@")[0]
+
+        [pscustomobject]@{
+            Email             = $email
+            Category          = [string]$record.Category
+            DeliveryLocation  = [string]$record.LatestDeliveryLocation
+            AD_Status         = if ($record.ADAccountExists) { if ($record.ADEnabled) { "Exists (Enabled)" } else { "Exists (Disabled)" } } else { "NOT FOUND IN AD" }
+            SamAccount        = if ($record.ADSamAccountName) { $record.ADSamAccountName } else { $sam }
+            UPN               = if ($record.ADUserPrincipalName) { $record.ADUserPrincipalName } else { "$sam@$InvestigateUpnSuffix" }
+            Attempts          = [int]$record.Attempts
+            SenderCount       = [int]$record.SenderCount
+            RawVariantPreview = Get-PreviewText -Text (Convert-CollectionToText -Value $record.RawEmailVariants) -MaxLength 70
+            SubjectPreview    = Get-PreviewText -Text (Convert-CollectionToText -Value $record.Subjects) -MaxLength 70
+            SenderPreview     = Get-PreviewText -Text (Convert-CollectionToText -Value $record.Senders) -MaxLength 70
+        }
+    }
+
+    $recipientValidationRows = $recipientValidationRows |
+        Where-Object { $_.AD_Status -in @("NOT FOUND IN AD", "Exists (Disabled)") } |
+        Sort-Object @{ Expression = { $_.Attempts }; Descending = $true }, @{ Expression = { $_.Email }; Descending = $false }
+
+    return @($recipientValidationRows)
+}
+
 # ==========================================================
 # KQL builders
 # ==========================================================
@@ -882,77 +958,6 @@ $OutboundRisk      = Invoke-DefenderQuery $DailyQ.OutboundExternalBySender
 $BillSummary       = Invoke-DefenderQuery $DailyQ.BillBlastSummary
 $BillTopRecipients = Invoke-DefenderQuery $DailyQ.BillBlastTopRecipients
 
-# ==========================================================
-# 14-day recipient validation investigation + AD enrichment
-# ==========================================================
-Import-Module ActiveDirectory -ErrorAction Stop
-
-$investigationCategoryFilter = if ($IncludeQuarantine) {
-    'Category in ("Non-Existent User", "Blocked (Pre-Resolution)")'
-} else {
-    'Category == "Non-Existent User"'
-}
-
-$investigationKql = @"
-EmailEvents
-| where Timestamp > ago(14d)
-| where RecipientEmailAddress endswith "@$InvestigateDomain"
-| extend Category = case(
-    LatestDeliveryLocation == "Failed", "Non-Existent User",
-    LatestDeliveryLocation == "Quarantine", "Blocked (Pre-Resolution)",
-    LatestDeliveryLocation == "Inbox", "Delivered",
-    "Other"
-)
-| where $investigationCategoryFilter
-| extend NormalizedRecipientEmailAddress = replace_regex(tolower(RecipientEmailAddress), @"^prvs=[^=]+=", "")
-| summarize
-    Attempts = count(),
-    SenderCount = dcount(SenderFromAddress),
-    Senders = make_set(SenderFromAddress, 20),
-    SenderIPs = make_set(SenderIPv4, 20),
-    Subjects = make_set(Subject, 10),
-    RawEmailVariants = make_set(RecipientEmailAddress, 20)
-by NormalizedRecipientEmailAddress, Category, LatestDeliveryLocation
-| order by Attempts desc
-"@
-
-$investigationRecords = Invoke-DefenderQuery $investigationKql
-foreach ($record in $investigationRecords) {
-    Add-Member -InputObject $record -NotePropertyName RecipientEmailAddress -NotePropertyValue $record.NormalizedRecipientEmailAddress -Force
-}
-
-$investigationRecords = Add-ADAccountStatus `
-    -Records $investigationRecords `
-    -IdentityProperty "RecipientEmailAddress" `
-    -SearchBase $AdSearchBase `
-    -Server $AdServer
-
-$recipientValidationRows = foreach ($record in $investigationRecords) {
-    $email = Resolve-NormalizedEmailAddress -Email ([string]$record.NormalizedRecipientEmailAddress)
-    if ([string]::IsNullOrWhiteSpace($email)) { continue }
-    $sam = ($email -split "@")[0]
-
-    [pscustomobject]@{
-        Email            = $email
-        Category         = [string]$record.Category
-        DeliveryLocation = [string]$record.LatestDeliveryLocation
-        AD_Status        = if ($record.ADAccountExists) { if ($record.ADEnabled) { "Exists (Enabled)" } else { "Exists (Disabled)" } } else { "NOT FOUND IN AD" }
-        SamAccount       = if ($record.ADSamAccountName) { $record.ADSamAccountName } else { $sam }
-        UPN              = if ($record.ADUserPrincipalName) { $record.ADUserPrincipalName } else { "$sam@$InvestigateUpnSuffix" }
-        Attempts         = [int]$record.Attempts
-        SenderCount      = [int]$record.SenderCount
-        RawVariantPreview = Get-PreviewText -Text (Convert-CollectionToText -Value $record.RawEmailVariants) -MaxLength 70
-        SubjectPreview    = Get-PreviewText -Text (Convert-CollectionToText -Value $record.Subjects) -MaxLength 70
-        SenderPreview     = Get-PreviewText -Text (Convert-CollectionToText -Value $record.Senders) -MaxLength 70
-    }
-}
-
-$recipientValidationRows = $recipientValidationRows |
-    Where-Object { $_.AD_Status -in @("NOT FOUND IN AD", "Exists (Disabled)") } |
-    Sort-Object @{ Expression = { $_.Attempts }; Descending = $true }, @{ Expression = { $_.Email }; Descending = $false }
-
-$recipientValidationCount = @($recipientValidationRows).Count
-
 # Inbound % for category table (and pie)
 $TotalInbound = ($InboundCategory | Measure-Object Messages -Sum).Sum
 if (-not $TotalInbound -or $TotalInbound -eq 0) { $TotalInbound = 0 }
@@ -1085,18 +1090,6 @@ $(Convert-ToHtmlTable $OutboundTop @("From","Messages") 760)
 <h2>Outbound Risk Watch: Top External Recipients by Internal Sender</h2>
 $(Convert-ToHtmlTable $OutboundRisk @("From","RecipientEmailAddress","Messages") 980)
 
-<hr class="hr"/>
-
-<h2>Recipient Validation Investigation (Last 14 Days)</h2>
-<p class="small">
-  <b>Domain:</b> $(HtmlEncode $InvestigateDomain) &nbsp;&nbsp;|&nbsp;&nbsp;
-  <b>Rows:</b> $recipientValidationCount
-</p>
-<details class="collapsible" open>
-  <summary>Show/Hide Recipient Validation Table</summary>
-  $(Convert-ToHtmlTable $recipientValidationRows @("Email","Category","DeliveryLocation","AD_Status","Attempts","SenderCount","SamAccount","UPN","RawVariantPreview","SubjectPreview","SenderPreview") 1100)
-</details>
-
 </body>
 </html>
 "@
@@ -1120,6 +1113,8 @@ if ($ShouldRunWeekly) {
     $OutboundTotalsW    = Invoke-DefenderQuery $WeeklyQ.OutboundTotals
     $OutboundRiskW      = Invoke-DefenderQuery $WeeklyQ.OutboundExternalBySender
     $BillSummaryW       = Invoke-DefenderQuery $WeeklyQ.BillBlastSummary
+    $recipientValidationRowsW = Get-RecipientValidationRows -LookbackDays 7
+    $recipientValidationCountW = @($recipientValidationRowsW).Count
 
     $TotalInboundW = ($InboundCategoryW | Measure-Object Messages -Sum).Sum
     if (-not $TotalInboundW -or $TotalInboundW -eq 0) { $TotalInboundW = 0 }
@@ -1210,6 +1205,18 @@ $(Convert-ToHtmlTable $OutboundTotalsW @("SentScope","Messages") 760)
 
 <h2>Outbound Risk Watch - Weekly</h2>
 $(Convert-ToHtmlTable $OutboundRiskW @("From","RecipientEmailAddress","Messages") 980)
+
+<hr class="hr"/>
+
+<h2>Recipient Validation Investigation (Last 7 Days)</h2>
+<p class="small">
+  <b>Domain:</b> $(HtmlEncode $InvestigateDomain) &nbsp;&nbsp;|&nbsp;&nbsp;
+  <b>Rows:</b> $recipientValidationCountW
+</p>
+<details class="collapsible" open>
+  <summary>Show/Hide Recipient Validation Table</summary>
+  $(Convert-ToHtmlTable $recipientValidationRowsW @("Email","Category","DeliveryLocation","AD_Status","Attempts","SenderCount","SamAccount","UPN","RawVariantPreview","SubjectPreview","SenderPreview") 1100)
+</details>
 
 </body>
 </html>
