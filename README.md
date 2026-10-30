@@ -54,11 +54,13 @@ On-prem Exchange `New-PSSession -Credential` (Kerberos/Basic to local servers) i
 
 ### `ActiveDirectory/`
 
-- **[Get-ADPasswordExpiryReport.ps1](ActiveDirectory/Get-ADPasswordExpiryReport.ps1)** — Report AD users close to password expiry (requires RSAT/AD module).
-- **[Set-ADPasswordsNeverExpire.ps1](ActiveDirectory/Set-ADPasswordsNeverExpire.ps1)** — Set PasswordNeverExpires for a list of AD users (danger, read warnings).
-- **[Invoke-LapsPasswordReset.ps1](ActiveDirectory/Invoke-LapsPasswordReset.ps1)** — Reset LAPS password for a computer or OU (writes to secure log).
-- **[Invoke-AADConnectSync.ps1](ActiveDirectory/Invoke-AADConnectSync.ps1)** - Remotely triggers an Azure AD Connect sync cycle (Delta or Initial)
-- **[GPO-Audit-Master.ps1](ActiveDirectory/GPO-Audit-Master.ps1)** — Export, flatten, and compare GPOs (XML exports, CSV flattens, and registry snapshot/compare helpers).
+- **[Get-ADPasswordExpiryReport.ps1](ActiveDirectory/Get-ADPasswordExpiryReport.ps1)** — Report AD users and their password expiration status (requires RSAT/AD module).
+- **[Set-ADPasswordsNeverExpire.ps1](ActiveDirectory/Set-ADPasswordsNeverExpire.ps1)** — Set PasswordNeverExpires on every enabled AD user (danger: overrides domain password policy).
+- **[Invoke-LapsPasswordReset.ps1](ActiveDirectory/Invoke-LapsPasswordReset.ps1)** — Reset LAPS passwords for computers in an OU or from a CSV, and write results to CSV.
+- **[Invoke-AADConnectSync.ps1](ActiveDirectory/Invoke-AADConnectSync.ps1)** — Remotely trigger an Azure AD Connect sync cycle (Delta or Initial) and show scheduler status.
+- **[GPO-Audit-Master.ps1](ActiveDirectory/GPO-Audit-Master.ps1)** — Export, flatten, search, and compare GPOs (XML, CSV, registry snapshots). Omit `-Mode` for the GUI.
+- **[AD-GPO-Audit-Master.ps1](ActiveDirectory/AD-GPO-Audit-Master.ps1)** — Same GPO workflow, plus duplicate-user and duplicate-group audits. Omit `-Mode` for the GUI.
+- **[Invoke-AfterHoursGpoPolicyAudit.ps1](ActiveDirectory/Invoke-AfterHoursGpoPolicyAudit.ps1)** — After-hours baseline audit: download Microsoft SCT and NIST GPO templates, compare them to linked GPOs, and write a risk-review CSV. Needs RSAT and internet access for the template download. Optional guards refuse to run during work hours or from a work network.
 
 ### `Entra-Graph-MFA/`
 
@@ -68,23 +70,23 @@ On-prem Exchange `New-PSSession -Credential` (Kerberos/Basic to local servers) i
 
 ### `Defender/`
 
-- **[Export-DefenderDevicesAndVulnerabilities.ps1](Defender/Export-DefenderDevicesAndVulnerabilities.ps1)** — Export Defender device inventory and vulnerability list via Graph/Sec API.
-- **[Get-DefenderMachinesWithSubnets.ps1](Defender/Get-DefenderMachinesWithSubnets.ps1)** — Join Defender devices to subnets for network-aware reporting.
-- **[Get-DefenderStatusADComputers.ps1](Defender/Get-DefenderStatusADComputers.ps1)** — Correlate AD computers with Defender status (healthy/at risk).
-- **[DefenderInternalUsersSummary.ps1](Defender/DefenderInternalUsersSummary.ps1)** - Uses Microsoft Defender Advanced Hunting API to generate an HTML "Internal Users Summary" report for a given calendar day
+- **[Export-DefenderDevicesAndVulnerabilities.ps1](Defender/Export-DefenderDevicesAndVulnerabilities.ps1)** — Export Defender for Endpoint devices and their vulnerabilities. Defaults to Commercial; use `-Cloud GCCH` for GCC High.
+- **[Get-DefenderMachinesWithSubnets.ps1](Defender/Get-DefenderMachinesWithSubnets.ps1)** — Map Defender device IPs onto a subnet table. The built-in map is a sample (`Example Subnet 1`–`4` on documentation ranges); edit it for your network. Defaults to Commercial; use `-Cloud GCCH` for GCC High.
+- **[Get-DefenderStatusADComputers.ps1](Defender/Get-DefenderStatusADComputers.ps1)** — Collect Defender Antivirus status from AD computers over WinRM (`Get-MpComputerStatus`) and export CSV.
+- **[DefenderInternalUsersSummary.ps1](Defender/DefenderInternalUsersSummary.ps1)** — Build a daily HTML mail summary from Defender Advanced Hunting, plus a weekly rollup when the report day is Sunday. Optional SharePoint upload. Default domains are placeholders (`example.com` / `example.net`); set them for your tenant.
 
 ### `Exchange-Compliance/`
 
 - **[Invoke-ComplianceSearchAndPurge.ps1](Exchange-Compliance/Invoke-ComplianceSearchAndPurge.ps1)** — Run Content Search + Purge in Microsoft 365 (eDiscovery/Compliance).
-- **[Remove-QuarantineMessagesBySender.ps1](Exchange-Compliance/Remove-QuarantineMessagesBySender.ps1)** — Bulk-release or remove quarantined messages by sender in EXO.
+- **[Remove-QuarantineMessagesBySender.ps1](Exchange-Compliance/Remove-QuarantineMessagesBySender.ps1)** — Permanently delete every quarantined message from a sender. This does not release mail. Follow the Exchange Online auth standard above.
 
 ### `Networking/`
 
-- **[Sort-ComputersBySubnet.ps1](Networking/Sort-ComputersBySubnet.ps1)** — Sort computer list into subnets using CIDR ranges.
+- **[Sort-ComputersBySubnet.ps1](Networking/Sort-ComputersBySubnet.ps1)** — Match computer IPs from a CSV to a subnet CSV. Matching uses a /24 mask.
 
 ### `Registry/`
 
-- **[Check-RemoteRegistryValue.ps1](Registry/Check-RemoteRegistryValue.ps1)** — Query a remote registry value (no WinRM required).
+- **[Check-RemoteRegistryValue.ps1](Registry/Check-RemoteRegistryValue.ps1)** — Read one registry value from remote computers over WinRM. Edit the server list in the script before you run it.
 
 ### `Vulnerabilities/`
 
@@ -111,15 +113,23 @@ Where relevant (e.g., Defender endpoints or Graph audiences), include a `-Cloud 
 
 ## 🧪 Quality Gates
 
-- **PSScriptAnalyzer**: style & safety checks
-- **Pester**: unit tests for core functions (mock external calls)
-- **Markdown lint**: keep docs readable
-- **CI**: GitHub Actions to run all of the above on PRs
+Pester tests sit next to the scripts they cover (`*.Tests.ps1`). They parse and exercise logic locally; they do not call a live tenant.
+
+```powershell
+# From the repo root, with PowerShell 7 and Pester 5+ installed
+Invoke-Pester -Path .
+Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning
+```
+
+This repo does not currently include a GitHub Actions workflow. Run those checks before you open a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-## 📄 License
+## 📄 Project docs
 
-MIT License — see [LICENSE](LICENSE) for details.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to report problems and open pull requests
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [SECURITY.md](SECURITY.md) — how to report a vulnerability privately
+- [LICENSE](LICENSE) — MIT License
 
 ---
